@@ -233,6 +233,8 @@ class TestVerbatimGuard(unittest.TestCase):
         self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 1)
         self.assertEqual(len(sub.evidence["supporter_points"]), 1)
         self.assertEqual(sub.evidence["supporter"]["span"], "significantly increased their survival")
+        # §6 headline `point` must carry the surviving point's rationale (not be empty).
+        self.assertEqual(sub.evidence["supporter"]["point"], "real span (survives)")
         # A fabricated refuter quote leaves no refuter headline span.
         self.assertEqual(sub.evidence["refuter"]["span"], "")
 
@@ -246,6 +248,39 @@ class TestVerbatimGuard(unittest.TestCase):
         sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
         self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 0)
         self.assertEqual(len(sub.evidence["supporter_points"]), 1)
+
+    def test_cross_field_straddle_discarded(self):
+        """A span that only exists by stitching the title's tail to the abstract's head
+        (contiguous in NEITHER field) must be discarded — fields are separate denominators."""
+        g, scope = animal_only_record(), humans_scope()
+        # title ends "...high-calorie diet"; abstract starts "Resveratrol shifted...".
+        # "diet Resveratrol" is contiguous in neither field, only across the junction.
+        straddle = "diet Resveratrol"
+        self.assertNotIn(straddle, g.title)
+        self.assertNotIn(straddle, g.abstract)
+        supporter = {"points": [{"quote": straddle, "rationale": "manufactured straddle span"}]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds())
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 1)
+        self.assertEqual(len(sub.evidence["supporter_points"]), 0)
+
+    def test_non_string_quote_discarded(self):
+        """A JSON null/number/bool `quote` is not a quote — must be discarded, not coerced."""
+        g, scope = animal_only_record(), humans_scope()
+        supporter = {"points": [
+            {"quote": None, "rationale": "null quote"},
+            {"quote": 42, "rationale": "numeric quote"},
+            {"quote": True, "rationale": "bool quote"},
+            {"quote": "significantly increased their survival", "rationale": "the one real span"},
+        ]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds())
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 3)
+        self.assertEqual(len(sub.evidence["supporter_points"]), 1)
+        self.assertEqual(sub.evidence["supporter"]["span"], "significantly increased their survival")
+        self.assertIsInstance(sub.evidence["supporter"]["span"], str)
 
 
 class TestSupportedControl(unittest.TestCase):
@@ -329,6 +364,9 @@ class TestInvariantsAndContract(unittest.TestCase):
         self.assertIn("note", ev["calibration"])
         self.assertEqual(set(ev["supporter"]), {"span", "point"})
         self.assertEqual(set(ev["refuter"]), {"span", "objection"})
+        # Headline reason fields are populated from the surviving points (not empty).
+        self.assertEqual(ev["supporter"]["point"], SUP_OK["points"][0]["rationale"])
+        self.assertEqual(ev["refuter"]["objection"], REF_OK["points"][0]["objection"])
         self.assertIsInstance(ev["abstained"], bool)
         self.assertIn("dose", v.unverifiable_axes)
         # Fully JSON-serializable (drops into C5/C6 unchanged).

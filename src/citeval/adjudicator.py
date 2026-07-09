@@ -126,20 +126,27 @@ def _norm(s: str) -> str:
     return _WS.sub(" ", s or "").strip()
 
 
-def _grounding_corpus(g: GroundedRecord) -> str:
-    """The verbatim-guard denominator: normalized title + abstract.
+def _grounding_segments(g: GroundedRecord) -> list[str]:
+    """The verbatim-guard denominators: each source field normalized SEPARATELY.
 
-    KNOWN LIMITATION (WO-C4): title + abstract only — no full text in PubMed metadata.
-    Extend here (append normalized full text) when C1 provides it; nothing else changes.
+    A verbatim span must lie wholly within one segment — title and abstract are distinct
+    fields, so joining them would let a fabricated quote straddle the title↔abstract
+    junction and match text that exists contiguously in neither. KNOWN LIMITATION
+    (WO-C4): title + abstract only — no full text in PubMed metadata. Full-text segments
+    append here (each its own denominator) when C1 provides them; nothing else changes.
     """
-    return _norm(f"{g.title} {g.abstract}")
+    return [seg for seg in (_norm(g.title), _norm(g.abstract)) if seg]
 
 
-def _verbatim_survivors(points: Sequence[dict], corpus: str, quote_key: str) -> tuple[list[dict], int]:
-    """Keep only points whose `quote` is a verbatim (normalized) substring of `corpus`.
+def _verbatim_survivors(points: Sequence[dict], segments: Sequence[str],
+                        quote_key: str) -> tuple[list[dict], int]:
+    """Keep only points whose `quote` is a verbatim (normalized) substring of a SINGLE
+    source segment.
 
-    Non-verbatim or empty-quote points are DISCARDED and counted — the hard rule that a
-    support/refute point must quote a real span of the cited source or be thrown away.
+    Non-verbatim, empty, cross-segment, or non-string quotes are DISCARDED and counted —
+    the hard rule (invariant #5) that a support/refute point must quote a real span of the
+    cited source or be thrown away. A non-`str` quote is not a quote (a JSON null/number/
+    bool must not be coerced into a spurious match), so it is discarded outright.
     """
     survivors: list[dict] = []
     discarded = 0
@@ -147,8 +154,9 @@ def _verbatim_survivors(points: Sequence[dict], corpus: str, quote_key: str) -> 
         if not isinstance(p, dict):
             discarded += 1
             continue
-        quote = _norm(str(p.get(quote_key, "")))
-        if quote and quote in corpus:
+        raw = p.get(quote_key)
+        quote = _norm(raw) if isinstance(raw, str) else ""
+        if quote and any(quote in seg for seg in segments):
             survivors.append(p)
         else:
             discarded += 1
@@ -286,12 +294,17 @@ def default_rollup(findings: list[AxisFinding]) -> str:
 # ==================================================================================
 # Substantive-support AxisFinding (CONTEXT_PACK §6 evidence keys — C5 reads these)
 # ==================================================================================
-def _headline(points: Sequence[dict], reason_key: str) -> dict:
-    """Strongest (first-surviving, strongest-first-ordered) grounded point, §6 shape."""
+def _headline(points: Sequence[dict], src_key: str, out_key: str) -> dict:
+    """Strongest (first-surviving, strongest-first-ordered) grounded point, §6 shape.
+
+    `src_key` is the reason field on the agent's point (supporter→"rationale",
+    refuter→"objection"); `out_key` is the §6 headline field name (supporter→"point",
+    refuter→"objection"). These differ for the supporter, so read and write keys are distinct.
+    """
     if points:
         p = points[0]
-        return {"span": p.get("quote", ""), reason_key: p.get(reason_key, "")}
-    return {"span": "", reason_key: ""}
+        return {"span": p.get("quote", ""), out_key: p.get(src_key, "")}
+    return {"span": "", out_key: ""}
 
 
 def _build_substantive_finding(agg: _Aggregate, tier: str, abstained: bool,
@@ -311,8 +324,8 @@ def _build_substantive_finding(agg: _Aggregate, tier: str, abstained: bool,
                        "agreement": round(agg.agreement, 4),
                        "n_samples": agg.n_valid},
         "calibration": {"note": ""},  # empty until the scorer/RB3 fills recalibration
-        "supporter": _headline(sup, "point"),
-        "refuter": _headline(ref, "objection"),
+        "supporter": _headline(sup, "rationale", "point"),
+        "refuter": _headline(ref, "objection", "objection"),
         "abstained": abstained,
         # --- richer optional additions (WO-C4 permits; C5 ignores unknown keys) ----------
         "supporter_points": sup,
@@ -360,19 +373,19 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         "population_scope": {"verdict": popn.verdict, "detail": popn.detail},
     }
 
-    corpus = _grounding_corpus(g)
+    segments = _grounding_segments(g)
 
     # 2. Supporter → verbatim guard.
     sup_raw = _call_agent(client, supporter.SYSTEM,
                           supporter.build_user(claim_text, g.title, g.abstract),
                           cfg.max_tokens_advocate)
-    sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), corpus, "quote")
+    sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
 
     # 3. Refuter → verbatim guard.
     ref_raw = _call_agent(client, refuter.SYSTEM,
                           refuter.build_user(claim_text, g.title, g.abstract),
                           cfg.max_tokens_advocate)
-    ref_points, ref_discarded = _verbatim_survivors(_points(ref_raw), corpus, "quote")
+    ref_points, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
 
     # 4. Critic self-consistency: N rounds over the SAME fixed grounded evidence.
     critic_user = critic.build_user(
