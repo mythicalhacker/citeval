@@ -172,7 +172,7 @@ class ModelPathTests(unittest.TestCase):
         names = {f.name for f in fields(ScopeFrame)}
         self.assertEqual(names, {
             "organism", "organism_evidence", "population", "population_evidence",
-            "effect", "dose_stated", "provenance", "tier",
+            "effect", "direction", "direction_evidence", "dose_stated", "provenance", "tier",
         })
         # C3's model path emits only the three real confidence tiers (not "n/a").
         self.assertIn(frame.tier, ("high", "medium", "low"))

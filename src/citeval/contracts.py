@@ -85,11 +85,14 @@ class ScopeFrame:
     population: Optional[str] = None
     population_evidence: list[str] = field(default_factory=list)
     effect: Optional[str] = None
+    direction: Optional[str] = None               # asserted effect direction: increase | decrease | no_change | None
+    direction_evidence: list[str] = field(default_factory=list)
     dose_stated: bool = False
     provenance: Provenance = "model-inferred"
     tier: Tier = "low"
-    # NOTE: `direction` (asserted effect direction) is a PLANNED field, deferred until C4's
-    # refuter consumes it — added then in one coordinated contract bump. Do not add it now.
+    # `direction` added in the C4-integration bump (2026-07-09): consumed by C4's refuter
+    # (direction-reversal probe) and RB1's direction test. Back-compatible optional field;
+    # C3 populates it, existing consumers ignore it.
 
 
 @dataclass

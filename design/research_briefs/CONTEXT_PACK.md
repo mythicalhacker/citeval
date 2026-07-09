@@ -8,10 +8,10 @@ the system unchanged.
 
 **ScopeFrame** (C3 output — what the *claim* asserts):
 `organism: str|None; organism_evidence: [str]; population: str|None; population_evidence: [str];
-effect: str|None; dose_stated: bool; provenance: str; tier: str`
-(`direction` is a **planned** substantive field — **deferred, not in the frozen contract yet**. It
-will be added in one coordinated bump when C4's refuter consumes it for its direction-reversal
-probe. Build to the fields listed above.)
+effect: str|None; direction: str|None (increase|decrease|no_change); direction_evidence: [str];
+dose_stated: bool; provenance: str; tier: str`
+(`direction` was added in the C4-integration bump (2026-07-09) — C3 populates it; C4's refuter uses
+it for the direction-reversal probe. Back-compatible optional field; existing consumers ignore it.)
 
 **GroundedRecord** (C2 output — the *cited paper*, all metadata-grounded):
 `identifier{type,value}; title; abstract; mesh_all:[str]; organism_tags:[MeshTag];
@@ -123,6 +123,22 @@ change; if keys change later, only C4 and C5's extractor move):
   - `"abstained": <bool>   # true ⇔ verdict == NOT_ENOUGH_INFO`
   - `}`
 - C5 reads defensively: a missing `supporter`/`refuter` renders as "no supporting span found".
+
+### RB1–3 integration decisions (2026-07-09)
+
+- **Scale (RB1):** the 6-level + `NOT_ENOUGH_INFO` scale is confirmed; grade-1 relabeled
+  `unsupported-for-the-claim`. Keep the 0→5 integer order (RB3 convention) for ±1-adjacent / QWK.
+- **CONFLICT resolved — §6 governs over RB1 §D.** RB1's worked examples *cap* the substantive grade
+  on a scope failure (B01 mouse → 1). **Rejected.** `substantive_support` grades substance holding
+  scope constant; scope failure gates `overall`, never the grade. Corpus graded labels follow §6
+  (B01 graded on substance) — capping would contaminate the graded axis's calibration with a
+  trivially-grounded scope fact, the exact failure §6 forbids.
+- **Outcome / surrogate overreach folds into the substantive grade** (supported-with-overreach /
+  technically-true-but-misleading). No new objective axis — no structured outcome field exists, so it
+  is a model judgement and belongs on the graded axis.
+- **Passing / methodological citations →** critic emits `N/A — non-substantiating`; rollup + scorer
+  treat it as non-graded (excluded from grading metrics, like an abstention but a distinct reason).
+- **`ScopeFrame.direction` added** (the deferred bump) — C3 populates it; C4's refuter uses it.
 
 ## 7. Measurement & environment constraints (for RB3 and the scorer)
 
