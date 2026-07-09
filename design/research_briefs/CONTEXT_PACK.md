@@ -9,7 +9,9 @@ the system unchanged.
 **ScopeFrame** (C3 output — what the *claim* asserts):
 `organism: str|None; organism_evidence: [str]; population: str|None; population_evidence: [str];
 effect: str|None; dose_stated: bool; provenance: str; tier: str`
-(full C3 also adds `direction`; treat `effect` + `direction` as the substantive fields.)
+(`direction` is a **planned** substantive field — **deferred, not in the frozen contract yet**. It
+will be added in one coordinated bump when C4's refuter consumes it for its direction-reversal
+probe. Build to the fields listed above.)
 
 **GroundedRecord** (C2 output — the *cited paper*, all metadata-grounded):
 `identifier{type,value}; title; abstract; mesh_all:[str]; organism_tags:[MeshTag];
@@ -104,6 +106,23 @@ judgement.
 **Implication for RB1:** define the "supported-with-overreach" / "technically-true-but-misleading"
 grades in **substance** terms (magnitude, certainty, generality of mechanism), holding scope
 constant; scope-type overreach lives on the scope axes.
+
+### `substantive_support` AxisFinding shape (rendering convention — NOT a contract change)
+
+`AxisFinding.evidence` is a free-form dict. For the graded `substantive_support` axis, **C4
+produces** and **C5 reads** these exact keys (so the producer/consumer agree without a `contracts.py`
+change; if keys change later, only C4 and C5's extractor move):
+
+- `verdict` = the RB1 grade (or `NOT_ENOUGH_INFO` on abstention); `tier` = confidence tier;
+  `provenance` = `model-inferred`; `detail` = the critic's one-line rationale.
+- `evidence = {`
+  - `"confidence": {"verbalized": "high|medium|low", "agreement": <0..1 float>, "n_samples": <int>},`
+  - `"calibration": {"note": "<one line from the scorer/RB3; empty until available>"},`
+  - `"supporter": {"span": "<verbatim cited-text quote>", "point": "<why it supports>"},`
+  - `"refuter": {"span": "<verbatim quote>", "objection": "<why it doesn't>"},`
+  - `"abstained": <bool>   # true ⇔ verdict == NOT_ENOUGH_INFO`
+  - `}`
+- C5 reads defensively: a missing `supporter`/`refuter` renders as "no supporting span found".
 
 ## 7. Measurement & environment constraints (for RB3 and the scorer)
 

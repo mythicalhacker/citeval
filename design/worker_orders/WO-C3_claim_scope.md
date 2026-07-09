@@ -11,8 +11,8 @@ Upgrade `src/citeval/claim_scope.py` so `parse_claim_scope(atomic_claim) -> Scop
 ## Contract
 
 - **In:** `atomic_claim: str`. **Out:** `contracts.ScopeFrame` =
-  `{organism, organism_evidence[], population, population_evidence[], effect, direction,
-  dose_stated, provenance, tier}`.
+  `{organism, organism_evidence[], population, population_evidence[], effect, dose_stated,
+  provenance, tier}`. (`direction` is **deferred** — not in the frozen contract yet; do not add it.)
 - `provenance` = `text-grounded` where an explicit marker exists, else `model-inferred`; `tier`
   reflects confidence.
 

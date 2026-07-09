@@ -52,6 +52,26 @@ metadata facts.
 - Given an ambiguous fixture, it **abstains** (`NOT_ENOUGH_INFO`).
 - Output validates against `Verdict`; drops into C5/C6 unchanged.
 
+## Manager decisions (2026-07-09)
+
+- **Objective-axis SSOT — extract, don't import-privates and don't duplicate.** Move
+  `_retraction_axis` / `_species_axis` / `_population_axis` + the `unverifiable_axes` construction
+  out of `adjudicator_stub.py` into a new shared `src/citeval/objective_axes.py`; both the stub and
+  the real adjudicator import it. Single source of truth for the metadata-override logic, no
+  cross-module private imports, and it survives the stub's eventual retirement. This
+  behavior-preserving refactor may touch `adjudicator_stub.py` — **keep `adjudicate_stub`'s public
+  signature** so `slice_runner`/scorer stay green; re-run the scorer to confirm.
+- **Confidence scaffold defaults (PROVISIONAL, RB3 tunes jointly):** `SELF_CONSISTENCY_ROUNDS = 5`,
+  `ABSTAIN_AGREEMENT_THRESHOLD ≈ 0.6`. The critic (not the full exchange) runs N times over the
+  fixed grounded evidence; modal grade + agreement fraction.
+- **Evidence keys:** populate the `substantive_support` `AxisFinding.evidence` with the exact keys
+  in CONTEXT_PACK §6 (`confidence`, `calibration`, `supporter{span,point}`, `refuter{span,objection}`,
+  `abstained`) so C5 renders you without a fixup. Richer `supporter_points` / `refuter_points` lists
+  are optional additions; the §6 single-object keys are the C5-facing headline.
+- **Grounding corpus:** title + abstract for now (full-text spans slot in later) — record it as a
+  known limitation in the module docstring.
+- **Added deliverable:** `src/citeval/objective_axes.py` (plus the behavior-preserving stub edit).
+
 ## Out of scope / do not touch
 
 `contracts.py`, C2 metadata logic. Do not finalize grade thresholds until RB1/RB3 return — leave

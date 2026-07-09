@@ -88,6 +88,8 @@ class ScopeFrame:
     dose_stated: bool = False
     provenance: Provenance = "model-inferred"
     tier: Tier = "low"
+    # NOTE: `direction` (asserted effect direction) is a PLANNED field, deferred until C4's
+    # refuter consumes it — added then in one coordinated contract bump. Do not add it now.
 
 
 @dataclass

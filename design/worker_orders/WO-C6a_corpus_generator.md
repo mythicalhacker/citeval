@@ -52,6 +52,11 @@ tier plus the case set the graded tier will reuse.
   a human study whose abstract also mentions mice; a well-supported human claim citing a paper with
   sparse/messy MeSH. Verify OpenAlex `is_retracted=false` AND cited MeSH scope matches the claim.
 - **Source diversity:** no single cited source > ~20% of any class.
+- **Model calls are Opus 4.8.** Every classification/labeling call (relies-on-finding for A, the
+  claim-scope classifier for B-species, the population-scope classifier for B-population, the
+  support check for C) runs on `claude-opus-4-8`. Invariant #4 covers *any classifier or labeler* —
+  and a weaker labeler would mislabel the B over-generalizations and corrupt the corpus, which is
+  exactly the failure the brief warns against.
 
 ## Targets (scale as yield allows; pilot yield ~44% of PMC citers)
 ~20–30 A · ~20–30 B-species · **≥10 B-population** · ~15 C-easy · **~15 C-hard**. Balance so
