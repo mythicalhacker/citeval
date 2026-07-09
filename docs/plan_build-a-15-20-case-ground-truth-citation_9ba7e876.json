@@ -1,0 +1,59 @@
+{
+  "version": 3,
+  "created_at": "2026-07-07T21:29:43.939Z",
+  "task_summary": "Build a balanced 15\u201321 case ground-truth citation eval set (retracted / scope-mismatch / correct control)",
+  "agents": [],
+  "phases": [
+    {
+      "name": "Plan",
+      "delegations": [
+        {
+          "steps": [
+            {
+              "title": "Stage Retraction Watch + confirm connectors",
+              "description": "Retraction Watch CSV already downloaded (retraction_watch.csv, 70,871 rows). Parse into a clean frame; keep genuine retractions (RetractionNature=='Retraction') with a valid OriginalPaperPubMedID (29,135 rows). Normalize RetractionDate/OriginalPaperDate, split multi-value Reason field, and index by PMID/DOI. Save a filtered candidate pool as retraction_candidates.parquet (checkpoint). Confirm PubMed metadata (mesh_terms) and OpenAlex citation graph are reachable (already verified)."
+            },
+            {
+              "title": "Select candidate sources for A, B, and C",
+              "description": "Assemble candidate cited-papers for all three categories up front. Category A: ~7-9 diverse retracted papers from the pool (biomedical, enough citations, spread of retraction reasons: misconduct/fraud, data problems, plagiarism, error, ethics), each OpenAlex-verified (is_retracted flag, citation count). Category B: cited papers whose PubMed MeSH tags PROVE a specific subject \u2014 species (has 'Animals'+organism e.g. 'Mice'/'Rats', NO 'Humans') or population (pediatric-only 'Infant'/'Child' vs adult) \u2014 recording the exact mesh_terms list as ground truth. Category C (negative control): cited papers that are NOT retracted AND whose MeSH scope will MATCH the citing claim (e.g. human study cited for a human claim). Produce candidate_sources.csv tagged by category with PMID, DOI, title, journal, and the proving metadata (RW record fields for A; mesh_terms for B/C)."
+            },
+            {
+              "title": "PILOT: extract claims on 2-3 sources, report yield, PAUSE",
+              "description": "Before committing to the full build, run the citing-claim extraction pipeline on 2-3 sources spanning categories. For each: pull citing works (OpenAlex openalex_citations), convert to PMC IDs, fetch PMC full text, locate the citation-context sentence referencing the cited work, and verify the claim text as a VERBATIM substring of the fetched full text (fabrication guard). Compute and REPORT the yield rate: of candidate citers examined, how many are in PMC open access AND state the claim cleanly enough to verbatim-verify. Save pilot_yield.md. STOP and report to the user; if yield is low, flag it and propose scope adjustment before proceeding."
+            },
+            {
+              "title": "Extract Category A citing claims (retracted)",
+              "description": "For each Category A source, pull citing works, select PMC-full-text citers, fetch full text, and extract the VERBATIM citation-context sentence that references the retracted work (substring guard: reject any span not found literally). Record citing PMID/DOI as claim provenance. Ground-truth label: cited source is RETRACTED (retraction reason + date from RW record). Where the in-text marker cannot be pinned to the reference, flag the linkage as inferred and keep separate. Target 5-7 verified cases."
+            },
+            {
+              "title": "Extract Category B mismatch claims (scope)",
+              "description": "For each Category B source, find real citing papers whose own scope is human/adult, fetch citing full text, and extract the VERBATIM citation-context sentence asserting the human/adult finding (same substring guard). Ground-truth label: SCOPE MISMATCH, with the specific axis (species or population) and the MeSH metadata that proves the cited paper's actual subject. Classify the claim's asserted subject by explicit lexical markers ('in humans', 'patients', 'adults') = text-grounded, vs requiring interpretation = model-inferred (flagged separately). Target 5-7 cases; drop any lacking a real full-text human-claiming citer rather than fabricate."
+            },
+            {
+              "title": "Extract Category C correct claims (control)",
+              "description": "Negative control for specificity/false-positive measurement. For each Category C source (not retracted; MeSH scope matches the claim), find a real citing paper whose claim matches the cited paper on the metadata axes (same organism scope, and the claim IS stated in the cited paper's abstract/text), and extract the VERBATIM citation-context sentence (same substring guard). Ground-truth label: SUPPORTED / no flag. Verify: cited paper's OpenAlex is_retracted==false AND cited MeSH organism/population axis agrees with the claim's asserted axis. Target 5-7 cases."
+            },
+            {
+              "title": "Assemble structured eval table with provenance",
+              "description": "Merge all three categories into one schema: case_id, category (A/B/C), claim_text, claim_source_pmid/doi, cited_pmid/doi, ground_truth_label (RETRACTED / SCOPE_MISMATCH / SUPPORTED), mismatch_axis (B only), justifying_metadata (exact MeSH list or RW record fields), retraction_reason/date (A only), confidence_tier, provenance_label (metadata-grounded vs model-inferred), and an inference_flag column. Roughly balanced classes (5-7 each). Every row's justification cites the specific record field or verbatim passage it rests on."
+            },
+            {
+              "title": "Save deliverables + methodology note",
+              "description": "Save eval_set.csv and eval_set.json (the structured cases), plus methodology.md documenting: data sources (Retraction Watch via Crossref, PubMed MeSH, OpenAlex citation graph), the verbatim-substring fabrication guard, how each ground-truth label is justified from structured data, the metadata-grounded vs model-inferred split with counts, per-class counts (A/B/C balance), the negative-control rationale, and honest limitations. Include a per-case provenance summary. Present the full table inline in the final response."
+            }
+          ]
+        }
+      ],
+      "id": "phase-0"
+    }
+  ],
+  "desired_outputs": [
+    "Structured CSV table of 15-21 balanced cases (Category A retracted / B scope-mismatch / C correct control) with claim text, cited PMID/DOI, ground-truth label, and justifying metadata/retraction record",
+    "A companion markdown methodology note documenting sources, extraction method, the negative-control rationale, and the metadata-grounded vs model-inferred split",
+    "A JSON version of the eval set for programmatic consumption by the verification tool"
+  ],
+  "feasibility": {
+    "rationale": "Category A (retraction) is metadata-airtight: the Retraction Watch DB (29,135 genuine retractions with original-paper PMIDs) gives reason+date, and OpenAlex gives real citing papers plus an is_retracted flag. Category B (species/population) is grounded on directly-readable PubMed MeSH organism/age check-tags. Category C (correct control) requires matching a citing claim to an unretracted, scope-consistent cited paper \u2014 findable via the same citation graph. Main uncertainty is PMC open-access full-text yield for extracting verbatim citing claims, which a pilot step measures before committing to full volume; every claim is a verbatim span verified against real full text.",
+    "confidence": "medium"
+  }
+}

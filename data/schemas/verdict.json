@@ -1,0 +1,41 @@
+{
+  "claim": "Compound X reduces tumor growth in humans",
+  "cited_pmid": "27189859",
+  "cited_title": "Penfluridol suppresses pancreatic tumor growth by autophagy-mediated apoptosis.",
+  "overall": "CITATION DOES NOT SUPPORT CLAIM (species scope mismatch)",
+  "layers": {
+    "claim_parse": {
+      "organism": "Humans",
+      "organism_mesh_guess": "D006801",
+      "effect": "reduces tumor growth",
+      "provenance": "model-inferred (NLP parse of free-text claim)",
+      "confidence": "medium"
+    },
+    "paper_scope_metadata": {
+      "organism_tags": [
+        "Animals",
+        "Mice"
+      ],
+      "age_group_tags": [],
+      "source": "efetch <MeshHeading><DescriptorName> + NLM MeSH tree numbers (id.nlm.nih.gov)"
+    }
+  },
+  "axis_findings": {
+    "species": {
+      "verdict": "SCOPE_MISMATCH",
+      "axis": "species",
+      "detail": "Claim asserts 'Humans'. Paper MeSH organism tags = ['Animals', 'Mice'] (animal model, no Humans tag). Human effect not supported by cited paper.",
+      "tier": "high",
+      "provenance": "metadata-grounded"
+    }
+  },
+  "unverifiable_axes": {
+    "dose": "No structured dose field in PubMed metadata; would require full-text extraction (model-inferred, flagged).",
+    "population_subgroup": "Paper has no human population/age tags (animal study); N/A.",
+    "effect_direction": "Whether 'reduces' matches the paper's reported direction requires reading Results text (model-inferred, out of metadata scope)."
+  },
+  "retraction_status": {
+    "status": "NONE_FOUND",
+    "source": "efetch <PublicationType> + <CommentsCorrections RefType=Retraction/ExpressionOfConcern>"
+  }
+}

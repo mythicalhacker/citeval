@@ -1,0 +1,150 @@
+{
+  "wakefield": {
+    "pmid": "9500320",
+    "title": "Ileal-lymphoid-nodular hyperplasia, non-specific colitis, and pervasive developmental disorder in children.",
+    "abstract": "BACKGROUND: We investigated a consecutive series of children with chronic enterocolitis and regressive developmental disorder.\nMETHODS: 12 children (mean age 6 years [range 3-10], 11 boys) were referred to a paediatric gastroenterology unit with a history of normal development followed by loss of acquired skills, including language, together with diarrhoea and abdominal pain. Children underwent gastroenterological, neurological, and developmental assessment and review of developmental records. Ileocolonoscopy and biopsy sampling, magnetic-resonance imaging (MRI), electroencephalography (EEG), and lumbar puncture were done under sedation. Barium follow-through radiography was done where possible. Biochemical, haematological, and immunological profiles were examined.\nFINDINGS: Onset of behavioural symptoms was associated, by the parents, with measles, mumps, and rubella vaccination in eight of the 12 children, with measles infection in one child, and otitis media in another. All 12 children had intestinal abnormalities, ranging from lymphoid nodular hyperplasia to aphthoid ulceration. Histology showed patchy chronic inflammation in the colon in 11 children and reactive ileal lymphoid hyperplasia in seven, but no granulomas. Behavioural disorders included autism (nine), disintegrative psychosis (one), and possible postviral or vaccinal encephalitis (two). There were no focal neurological abnormalities and MRI and EEG tests were normal. Abnormal laboratory results were significantly raised urinary methylmalonic acid compared with age-matched controls (p=0.003), low haemoglobin in four children, and a low serum IgA in four children.\nINTERPRETATION: We identified associated gastrointestinal disease and developmental regression in a group of previously normal children, which was generally associated in time with possible environmental triggers.",
+    "mesh_all": [
+      "Child",
+      "Child, Preschool",
+      "Developmental Disabilities",
+      "Enterocolitis",
+      "Female",
+      "Humans",
+      "Hyperplasia",
+      "Ileum",
+      "Lymphoid Tissue",
+      "Male",
+      "Measles",
+      "Measles Vaccine",
+      "Measles-Mumps-Rubella Vaccine",
+      "Mumps Vaccine",
+      "Otitis Media",
+      "Rubella Vaccine",
+      "Vaccines, Combined"
+    ],
+    "organism_tags": [
+      {
+        "descriptor": "Humans",
+        "ui": "D006801",
+        "major_topic": false,
+        "tree_numbers": [
+          "B01.050.150.900.649.313.988.400.112.400.400"
+        ]
+      }
+    ],
+    "age_group_tags": [
+      {
+        "descriptor": "Child",
+        "ui": "D002648",
+        "major_topic": false,
+        "tree_numbers": [
+          "M01.060.406"
+        ]
+      },
+      {
+        "descriptor": "Child, Preschool",
+        "ui": "D002675",
+        "major_topic": false,
+        "tree_numbers": [
+          "M01.060.406.448"
+        ]
+      }
+    ],
+    "sex_tags": [
+      {
+        "descriptor": "Female",
+        "ui": "D005260",
+        "major_topic": false,
+        "tree_numbers": []
+      },
+      {
+        "descriptor": "Male",
+        "ui": "D008297",
+        "major_topic": false,
+        "tree_numbers": []
+      }
+    ],
+    "other_person_tags": [],
+    "publication_types": [
+      "Journal Article",
+      "Research Support, Non-U.S. Gov't",
+      "Retracted Publication"
+    ],
+    "retraction_status": "RETRACTED",
+    "retraction_notices": [
+      {
+        "ref_type": "RetractionIn",
+        "ref_source": "Lancet. 2004 Mar 6;363(9411):750. doi: 10.1016/S0140-6736(04)15715-2.",
+        "notice_pmid": "15016483"
+      },
+      {
+        "ref_type": "RetractionIn",
+        "ref_source": "Lancet. 2010 Feb 6;375(9713):445. doi: 10.1016/S0140-6736(10)60175-4.",
+        "notice_pmid": "20137807"
+      },
+      {
+        "ref_type": "ExpressionOfConcernIn",
+        "ref_source": "Eur J Gastroenterol Hepatol. 2011 Nov;23(11):1082. doi: 10.1097/MEG.0b013e328349d184.",
+        "notice_pmid": "21971344"
+      }
+    ],
+    "provenance": {
+      "abstract": "NCBI E-utilities efetch (db=pubmed) <AbstractText>",
+      "mesh": "efetch <MeshHeading><DescriptorName> + NLM MeSH tree numbers (id.nlm.nih.gov)",
+      "retraction": "efetch <PublicationType> + <CommentsCorrections RefType=Retraction/ExpressionOfConcern>"
+    }
+  },
+  "mouse": {
+    "pmid": "27189859",
+    "title": "Penfluridol suppresses pancreatic tumor growth by autophagy-mediated apoptosis.",
+    "abstract": "Pancreatic tumors exhibit enhanced autophagy as compared to any other cancer, making it resistant to chemotherapy. We evaluated the effect of penfluridol against pancreatic cancer. Penfluridol treatment induced apoptosis and inhibited the growth of Panc-1, BxPC-3 and AsPC-1, pancreatic cancer cells with IC50 ranging between 6-7\u2009\u03bcM after 24\u2009h of treatment. Significant autophagy was induced by penfluridol treatment in pancreatic cancer cells. Punctate LC3B and autophagosomes staining confirmed autophagy. Inhibiting autophagy by chloroquine, bafilomycin, 3-methyladenine or LC3BsiRNA, significantly blocked penfluridol-induced apoptosis, suggesting that autophagy lead to apoptosis in our model. Penfluridol treatment suppressed the growth of BxPC-3 tumor xenografts by 48% as compared to 17% when treated in combination with chloroquine. Similarly, penfluridol suppressed the growth of AsPC-1 tumors by 40% versus 16% when given in combination with chloroquine. TUNEL staining and caspase-3 cleavage revealed less apoptosis in the tumors from mice treated with penfluridol and chloroquine as compared to penfluridol alone. Penfluridol treatment also suppressed the growth of orthotopically implanted Panc-1 tumors by 80% by inducing autophagy-mediated apoptosis in the tumors. These studies established that penfluridol inhibits pancreatic tumor growth by autophagy-mediated apoptosis. Since penfluridol is already in clinic, positive findings from our study will accelerate its clinical development.",
+    "mesh_all": [
+      "Animals",
+      "Antineoplastic Agents",
+      "Apoptosis",
+      "Autophagy",
+      "Cell Line, Tumor",
+      "Chloroquine",
+      "Disease Models, Animal",
+      "Drug Therapy, Combination",
+      "Heterografts",
+      "Mice",
+      "Neoplasm Transplantation",
+      "Pancreatic Neoplasms",
+      "Penfluridol",
+      "Treatment Outcome"
+    ],
+    "organism_tags": [
+      {
+        "descriptor": "Animals",
+        "ui": "D000818",
+        "major_topic": false,
+        "tree_numbers": [
+          "B01.050"
+        ]
+      },
+      {
+        "descriptor": "Mice",
+        "ui": "D051379",
+        "major_topic": false,
+        "tree_numbers": [
+          "B01.050.150.900.649.313.992.635.505.500"
+        ]
+      }
+    ],
+    "age_group_tags": [],
+    "sex_tags": [],
+    "other_person_tags": [],
+    "publication_types": [
+      "Journal Article",
+      "Research Support, N.I.H., Extramural"
+    ],
+    "retraction_status": "NONE_FOUND",
+    "retraction_notices": [],
+    "provenance": {
+      "abstract": "NCBI E-utilities efetch (db=pubmed) <AbstractText>",
+      "mesh": "efetch <MeshHeading><DescriptorName> + NLM MeSH tree numbers (id.nlm.nih.gov)",
+      "retraction": "efetch <PublicationType> + <CommentsCorrections RefType=Retraction/ExpressionOfConcern>"
+    }
+  }
+}
