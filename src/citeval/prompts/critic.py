@@ -25,12 +25,15 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 
+from . import EVIDENCE_CACHE_MARK
+
 # RB2 wording (INTEGRATION_SPEC §2.2). The allowed grade enumeration is injected by
 # `build_user` (RB1 owns it) so this module never hardcodes the finalized scale. The five
 # ordered boundary tests (RB1 §B) are the grading rubric; the critic names the test that fired.
 SYSTEM = (
     "You are the CRITIC in an adversarial scientific-citation adjudication. You are given a "
-    "CLAIM, the cited paper's TITLE and ABSTRACT (the SOURCE), two identity-blinded and "
+    "CLAIM, the cited paper's TITLE and ABSTRACT (the SOURCE) — and, when available, an excerpt "
+    "of the SOURCE's FULL TEXT (Results/Discussion/Conclusions) — two identity-blinded and "
     "order-randomized ARGUMENT blocks (one argues the SOURCE supports the CLAIM, one argues it "
     "does not — you are NOT told which agent wrote which), and a block of OBJECTIVE FACTS about "
     "the SOURCE.\n\n"
@@ -103,6 +106,7 @@ def build_user(
     objective_facts: dict,
     grade_values: Sequence[str],
     direction: str | None = None,
+    full_text: str = "",
 ) -> str:
     """Assemble the critic's user turn.
 
@@ -111,17 +115,26 @@ def build_user(
     `objective_facts` maps axis -> the objective AxisFinding as a dict with `verdict`+`detail`.
     `grade_values` is the RB1 ordinal + NEI + N/A enumeration, injected so this module never
     hardcodes the finalized scale. `direction` is the claim's asserted effect direction (test 1).
+    `full_text` is the budgeted PMC full-text excerpt (empty when unavailable).
+
+    The invisible cache sentinel is placed after OBJECTIVE FACTS, so the entire per-case-fixed
+    evidence prefix (claim + direction + title + abstract + full_text + objective facts) is cached
+    across the self-consistency rounds; only the per-round ARGUMENTS follow the mark.
     """
     blocks = []
     for arg in arguments:
         blocks.append(f"ARGUMENT {arg.get('label', '?')}:\n{_argument_block(arg.get('points', []))}")
     args_text = "\n\n".join(blocks) if blocks else "(no arguments)"
+    ft = full_text.strip()
+    ft_block = f"SOURCE FULL TEXT (excerpt — abstract + Results/Discussion/Conclusions):\n{ft}\n\n" if ft else ""
     return (
         f"CLAIM:\n{claim.strip()}\n\n"
         f"CLAIM ASSERTED DIRECTION: {direction or 'not stated'}\n\n"
         f"SOURCE TITLE:\n{title.strip()}\n\n"
         f"SOURCE ABSTRACT:\n{abstract.strip()}\n\n"
-        f"OBJECTIVE FACTS (FIXED — do not overturn):\n{_facts_block(objective_facts)}\n\n"
+        f"{ft_block}"
+        f"OBJECTIVE FACTS (FIXED — do not overturn):\n{_facts_block(objective_facts)}"
+        f"{EVIDENCE_CACHE_MARK}\n\n"
         f"{args_text}\n\n"
         f"Allowed grade values: {json.dumps(list(grade_values))}.\n"
         "Apply the five ordered boundary tests, grade SUBSTANCE only (scope held constant), and "

@@ -29,6 +29,8 @@ _DATA_DIR = Path(__file__).resolve().parent / "data"
 _CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 _MESH_CACHE = _CACHE_DIR / "mesh_tree.json"
 _EFETCH_DIR = _CACHE_DIR / "efetch_pubmed"   # cached raw efetch db=pubmed XML (rerun/scale speed)
+_EFETCH_PMC_DIR = _CACHE_DIR / "efetch_pmc"  # cached raw efetch db=pmc JATS XML, per PMID (full text)
+_PMC_IDCONV = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
 
 _EMAIL = os.environ.get("NCBI_EMAIL", "citeval@example.org")
 _TOOL = os.environ.get("NCBI_TOOL", "citeval")
@@ -37,6 +39,25 @@ _MIN_INTERVAL = 0.11 if _API_KEY else 0.34   # NCBI: 10/s with key, 3/s without
 _last_call = [0.0]
 
 SEX_DESCRIPTORS = {"Male", "Female"}
+
+# Full-text evidence budget (WO-C4 full-text grounding §3): ~6000 tokens ≈ 24k chars. The budgeted
+# text is BOTH what the adjudicator feeds the triad AND what the verbatim guard uses as an extra
+# grounded segment, so it is bounded to keep the (full-text × 7 rounds × 3 agents) cost in check.
+FULLTEXT_BUDGET_CHARS = 24000
+_PRIORITY_SECTIONS = ("result", "discussion", "conclusion")   # prefer these body sections
+_DROP_TAGS = frozenset({"ref-list"})                          # drop the reference list (§3)
+# Block-level JATS elements get a separating space appended so a <title> does not glue onto the
+# following <p> ("RESULTSThe..."). Inline elements (sub, sup, italic, xref, …) are deliberately
+# EXCLUDED so word-glued markup is preserved verbatim (e.g. NUF<sub>2</sub> → "NUF2", not "NUF 2";
+# the notebook's clean_display note flags exactly this gene-name corruption).
+_BLOCK_TAGS = frozenset({"sec", "title", "p", "label", "list", "list-item", "caption", "abstract",
+                         "table-wrap", "fig", "body", "disp-quote", "def-list", "def-item", "term"})
+_WS = re.compile(r"\s+")
+
+
+def _ws_norm(s: str) -> str:
+    """Whitespace-normalize (notebook BLOCK 3 `norm`)."""
+    return _WS.sub(" ", s or "").strip()
 
 
 # --------------------------------------------------------------------------- net
@@ -71,6 +92,162 @@ def _efetch_pubmed_cached(pmid: str) -> bytes:
     data = _eutils("efetch.fcgi", db="pubmed", id=pmid, retmode="xml")
     fp.write_bytes(data)
     return data
+
+
+# ------------------------------------------------------- full text (PMC JATS, invariant #6)
+# Raw JATS from EFetch db=pmc, never a plain-text connector (invariant #6). This ports the
+# reusable extraction of src/reference/notebook_snippets.py — BLOCK 1 `efetch_pmc_xml` (the
+# only direct-E-utilities full-text call there) and BLOCK 3 `body_text` (drop the reference
+# list, whitespace-normalize <body>) — to stdlib xml.etree so we add NO lxml dependency
+# (CLAUDE.md: no new deps beyond the Anthropic SDK). PMC EFetch JATS is unnamespaced.
+def _resolve_pmcid(pmid: str) -> str | None:
+    """PMID → PMCID via the NCBI PMC ID Converter (notebook BLOCK 6 `to_pmc`, re-pointed to the
+    documented REST endpoint). Returns 'PMC…' or None when the article is not in PMC. Swallows
+    network/parse errors (→ None) so a full-text attempt never breaks grounding."""
+    url = _PMC_IDCONV + "?" + urllib.parse.urlencode(
+        {"ids": str(pmid), "format": "json", "tool": _TOOL, "email": _EMAIL})
+    try:
+        recs = json.loads(_get(url)).get("records", [])
+    except Exception:
+        return None
+    for r in recs:
+        if str(r.get("pmid")) == str(pmid) and r.get("pmcid"):
+            return r["pmcid"]
+    for r in recs:                      # fallback: any record carrying a PMCID
+        if r.get("pmcid"):
+            return r["pmcid"]
+    return None
+
+
+def _efetch_pmc_cached(pmid: str) -> bytes | None:
+    """Raw PMC JATS XML for a PMID, disk-cached by PMID (mirrors `_efetch_pubmed_cached`).
+    Resolves PMID→PMCID first; caches SUCCESSFUL fetches ONLY — a network failure or a
+    not-in-PMC PMID is never cached, so it retries next run. Returns None when not in PMC."""
+    _EFETCH_PMC_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _EFETCH_PMC_DIR / f"{pmid}.xml"
+    if fp.exists():
+        return fp.read_bytes()
+    pmcid = _resolve_pmcid(pmid)
+    if not pmcid:
+        return None
+    data = _eutils("efetch.fcgi", db="pmc", id=str(pmcid).replace("PMC", ""), retmode="xml")
+    fp.write_bytes(data)                # reached only on a successful fetch (else _eutils raised)
+    return data
+
+
+def _localname(tag) -> str:
+    return tag.rsplit("}", 1)[1] if isinstance(tag, str) and "}" in tag else (tag or "")
+
+
+def _element_text_skip(el) -> str:
+    """`itertext()` minus <ref-list> subtrees (notebook BLOCK 3 `body_text`, which drops the
+    reference list). Namespace-agnostic on the tag localname (PMC EFetch JATS is unnamespaced,
+    but strip defensively)."""
+    parts: list[str] = []
+
+    def walk(e) -> None:
+        if _localname(e.tag) in _DROP_TAGS:
+            return
+        if e.text:
+            parts.append(e.text)
+        for child in e:
+            walk(child)
+            if _localname(child.tag) in _BLOCK_TAGS:
+                parts.append(" ")          # separate block elements; inline markup stays glued
+            if child.tail:
+                parts.append(child.tail)
+
+    walk(el)
+    return _ws_norm("".join(parts))
+
+
+def _jats_body_sections(root) -> tuple[str, list[tuple[str, str]]]:
+    """(body_fulltext, [(section_title, section_text), ...]) from a parsed PMC JATS tree.
+    `body_fulltext` is the whole <body> minus the reference list; sections are the top-level
+    <sec> blocks. ('' , []) when there is no <body> — an abstract-only PMC record → honest empty."""
+    body = root.find(".//body")
+    if body is None:
+        return "", []
+    sections: list[tuple[str, str]] = []
+    for sec in body.findall("./sec"):
+        title_el = sec.find("./title")
+        title = _ws_norm("".join(title_el.itertext())) if title_el is not None else ""
+        sections.append((title, _element_text_skip(sec)))
+    return _element_text_skip(body), sections
+
+
+def _pmcid_from_xml(root) -> str:
+    for aid in root.iter("article-id"):
+        if aid.get("pub-id-type") in ("pmc", "pmcid"):
+            v = (aid.text or "").strip()
+            if v:
+                return v if v.upper().startswith("PMC") else f"PMC{v}"
+    return ""
+
+
+def select_budgeted_fulltext(sections: list[tuple[str, str]], body_fulltext: str,
+                             abstract: str, budget: int = FULLTEXT_BUDGET_CHARS) -> str:
+    """Budgeted full-text selection (WO-C4 full-text grounding §3).
+
+    Strategy: always PREPEND the abstract, then prefer the Results + Discussion + Conclusions
+    body sections (in that priority order); the reference list is already dropped upstream. Fall
+    back to leading body text when the sections are not the parseable IMRaD shape (e.g. a body
+    with no standard <sec> titles). Truncated to `budget` chars (~6000 tokens). Deterministic."""
+    parts: list[str] = []
+    used = 0
+
+    def _add(text: str) -> None:
+        nonlocal used
+        text = _ws_norm(text)
+        if not text or used >= budget:
+            return
+        chunk = text[: budget - used]
+        parts.append(chunk)
+        used += len(chunk) + 2          # +2 accounts for the "\n\n" joiner
+
+    _add(abstract)                      # abstract always first
+    chosen: set[int] = set()
+    picked = False
+    for kw in _PRIORITY_SECTIONS:
+        for i, (title, text) in enumerate(sections):
+            if i in chosen:
+                continue
+            if kw in title.lower():
+                _add(text)
+                chosen.add(i)
+                picked = True
+    if not picked:
+        _add(body_fulltext)             # fallback: leading body text (non-IMRaD / unparseable secs)
+    return "\n\n".join(p for p in parts if p).strip()
+
+
+def fetch_full_text(pmid: str, abstract: str, errors: list[str] | None = None) -> tuple[str, str]:
+    """Best-effort budgeted full text for a PMID + its provenance ('pmc-jats:PMC…' or '').
+
+    Never raises and never fabricates: any failure (not in PMC, network error, unparseable XML,
+    no <body>) yields ('', '') — the honest empty value. Successful raw PMC XML is disk-cached."""
+    try:
+        xml = _efetch_pmc_cached(pmid)
+    except Exception as e:              # noqa: BLE001 — full text is best-effort; degrade to empty
+        if errors is not None:
+            errors.append(f"full_text fetch failed: {e}")
+        return "", ""
+    if not xml:
+        return "", ""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError as e:
+        if errors is not None:
+            errors.append(f"full_text parse failed: {e}")
+        return "", ""
+    body_fulltext, sections = _jats_body_sections(root)
+    if not body_fulltext:
+        return "", ""                   # abstract-only PMC record → honest empty full text
+    budgeted = select_budgeted_fulltext(sections, body_fulltext, abstract)
+    if not budgeted:
+        return "", ""
+    pmcid = _pmcid_from_xml(root)
+    return budgeted, (f"pmc-jats:{pmcid}" if pmcid else "pmc-jats")
 
 
 # ---------------------------------------------------------------------- MeSH tree
@@ -250,8 +427,13 @@ def _retraction(pmid: str, doi: str, parsed: dict) -> RetractionInfo:
 
 
 # --------------------------------------------------------------------------- main
-def ground(identifier: CitedIdentifier) -> GroundedRecord:
-    """Resolve + ground a cited paper into a fully metadata-grounded record."""
+def ground(identifier: CitedIdentifier, *, with_full_text: bool = True) -> GroundedRecord:
+    """Resolve + ground a cited paper into a fully metadata-grounded record.
+
+    When `with_full_text` is True (default) the cited paper's budgeted PMC full text is attached
+    (invariant #6: raw JATS from EFetch db=pmc, never a plain-text connector); it degrades to the
+    honest empty value when unavailable. Callers that never consume the full text (the offline
+    stub path) pass `with_full_text=False` to skip the extra PMC round-trip entirely."""
     errors: list[str] = []
     pmid = _resolve_to_pmid(identifier)
     parsed = _parse_pubmed_xml(_efetch_pubmed_cached(pmid))
@@ -275,6 +457,20 @@ def ground(identifier: CitedIdentifier) -> GroundedRecord:
     retraction = _retraction(pmid, doi, parsed)
     has_humans = any(t.descriptor == "Humans" for t in organism)
 
+    # Full text (best-effort; invariant #6). Failure/unavailable → empty (never fabricated).
+    full_text, full_text_provenance = (
+        fetch_full_text(pmid, parsed["abstract"], errors) if with_full_text else ("", ""))
+
+    provenance = {
+        "abstract": "NCBI efetch db=pubmed <AbstractText>",
+        "mesh": "NCBI efetch <DescriptorName> + NLM MeSH tree numbers (id.nlm.nih.gov)",
+        "organism_population_split": "keyed on MeSH tree number (organism B*, population M01.060*)",
+        "retraction": "Retraction Watch registry x-checked vs efetch PublicationType + CommentsCorrections",
+    }
+    if full_text:
+        provenance["full_text"] = ("NCBI efetch db=pmc raw JATS <body> (budgeted: abstract + "
+                                   "Results/Discussion/Conclusions, reference list dropped) — invariant #6")
+
     return GroundedRecord(
         identifier=CitedIdentifier(type="pmid", value=pmid),
         title=parsed["title"],
@@ -286,11 +482,8 @@ def ground(identifier: CitedIdentifier) -> GroundedRecord:
         publication_types=parsed["pub_types"],
         retraction=retraction,
         has_humans=has_humans,
-        provenance={
-            "abstract": "NCBI efetch db=pubmed <AbstractText>",
-            "mesh": "NCBI efetch <DescriptorName> + NLM MeSH tree numbers (id.nlm.nih.gov)",
-            "organism_population_split": "keyed on MeSH tree number (organism B*, population M01.060*)",
-            "retraction": "Retraction Watch registry x-checked vs efetch PublicationType + CommentsCorrections",
-        },
+        provenance=provenance,
         grounding_errors=errors,
+        full_text=full_text,
+        full_text_provenance=full_text_provenance,
     )

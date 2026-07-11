@@ -76,6 +76,14 @@ class GroundedRecord:
     has_humans: bool
     provenance: dict = field(default_factory=dict)
     grounding_errors: list[str] = field(default_factory=list)
+    # Full text of the cited paper (budgeted, JATS-extracted from PMC EFetch — invariant #6).
+    # Added in the C4 full-text-grounding bump (2026-07-12): consumed by C4's adversarial triad
+    # and the verbatim guard as an extra grounded-evidence segment. Both fields are back-compatible
+    # optional defaults appended at the END of the field list; existing consumers ignore them.
+    # `full_text_provenance` is e.g. "pmc-jats:PMC123456", or "" when no full text is available
+    # (the honest empty value — never fabricated).
+    full_text: str = ""
+    full_text_provenance: str = ""
 
 
 @dataclass

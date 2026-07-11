@@ -547,5 +547,118 @@ class TestInvariantsAndContract(unittest.TestCase):
         self.assertIn("recalibrated confidence", sub.evidence["calibration"]["note"])
 
 
+# ----------------------------------------------------------------------------------
+# Full text (WO-C4 full-text grounding: guard segment, agent evidence, depth label, caching)
+# ----------------------------------------------------------------------------------
+def _record_with_full_text(body: str) -> GroundedRecord:
+    g = animal_only_record()
+    g.full_text = body
+    return g
+
+
+class TestFullText(unittest.TestCase):
+    def test_verbatim_guard_accepts_body_quote(self):
+        """A quote present ONLY in the full-text body (not title/abstract) survives the guard, and
+        the depth label reflects that full text was used."""
+        body = ("Abstract recap. RESULTS Resveratrol extended median lifespan by 31 percent in the "
+                "treated cohort. DISCUSSION The effect was dose-dependent.")
+        g = _record_with_full_text(body)
+        supporter = {"points": [{"quote": "extended median lifespan by 31 percent",
+                                 "rationale": "the body reports a lifespan effect"}]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds())
+        v = A.adjudicate(g, humans_scope(), claim_text="x", client=fc, config=SINGLE)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 0)
+        self.assertEqual(sub.evidence["supporter"]["span"], "extended median lifespan by 31 percent")
+        self.assertEqual(sub.evidence["verbatim_guard"]["grounding_corpus"], "title+abstract+fulltext")
+
+    def test_depth_label_abstract_only_when_no_full_text(self):
+        g = animal_only_record()   # full_text == ""
+        fc = FakeClient(SUP_OK, REF_OK, agree_rounds())
+        v = A.adjudicate(g, humans_scope(), claim_text="x", client=fc, config=SINGLE)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.evidence["verbatim_guard"]["grounding_corpus"],
+                         "title+abstract (full text unavailable)")
+
+    def test_full_text_cross_section_straddle_discarded(self):
+        """A quote spanning two full-text SECTIONS (two real but non-contiguous fragments) is
+        discarded — each budgeted section is its own guard segment, so the abstract↔body /
+        section↔section junction cannot be straddled (mirrors the title↔abstract straddle guard)."""
+        g = _record_with_full_text("Abstract part one sentence.\n\nRESULTS Body part two sentence here.")
+        straddle = "one sentence. RESULTS Body part two"       # spans the section junction
+        within = "Body part two sentence here"                 # wholly inside the Results section
+        supporter = {"points": [{"quote": straddle, "rationale": "straddle (must be discarded)"},
+                                 {"quote": within, "rationale": "within one section (survives)"}]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds())
+        v = A.adjudicate(g, humans_scope(), claim_text="x", client=fc, config=SINGLE)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.evidence["verbatim_guard"]["supporter_discarded"], 1)
+        self.assertEqual(len(sub.evidence["supporter_points"]), 1)
+        self.assertEqual(sub.evidence["supporter"]["span"], within)
+
+    def test_full_text_threaded_into_refuter_and_critic_prompts(self):
+        g = _record_with_full_text("The body mentions UNIQUEBODYTOKEN exactly once.")
+        fc = FakeClient(SUP_OK, REF_OK, agree_rounds())
+        A.adjudicate(g, humans_scope(), claim_text="x", client=fc, config=SINGLE)
+        self.assertIn("UNIQUEBODYTOKEN", fc.refuter_user_prompts[0])
+        self.assertIn("UNIQUEBODYTOKEN", fc.critic_user_prompts[0])
+        self.assertIn("SOURCE FULL TEXT", fc.critic_user_prompts[0])
+
+    def test_build_user_identical_shape_when_no_full_text(self):
+        """Behaviour identical when full_text=='': no SOURCE FULL TEXT section on any builder."""
+        from citeval.prompts import critic, refuter, supporter
+        self.assertNotIn("SOURCE FULL TEXT", supporter.build_user("c", "t", "a", ""))
+        self.assertIn("SOURCE FULL TEXT", supporter.build_user("c", "t", "a", "BODY"))
+        self.assertNotIn("SOURCE FULL TEXT", refuter.build_user("c", "t", "a", "increase", ""))
+        self.assertIn("SOURCE FULL TEXT", refuter.build_user("c", "t", "a", "increase", "BODY"))
+        base = critic.build_user("c", "t", "a", [], {}, ["fully-supported"], "increase", "")
+        self.assertNotIn("SOURCE FULL TEXT", base)
+        self.assertIn("SOURCE FULL TEXT",
+                      critic.build_user("c", "t", "a", [], {}, ["fully-supported"], "increase", "BODY"))
+
+
+class TestPromptCaching(unittest.TestCase):
+    def test_content_blocks_marks_evidence_prefix_and_strips_sentinel(self):
+        from citeval.prompts import EVIDENCE_CACHE_MARK
+        user = "EVIDENCE PREFIX" + EVIDENCE_CACHE_MARK + "VARIABLE TAIL"
+        blocks = A._content_blocks(user)
+        self.assertEqual(len(blocks), 2)
+        self.assertEqual(blocks[0]["text"], "EVIDENCE PREFIX")
+        self.assertEqual(blocks[0]["cache_control"], {"type": "ephemeral"})
+        self.assertNotIn(EVIDENCE_CACHE_MARK, blocks[0]["text"])   # sentinel stripped
+        self.assertEqual(blocks[1]["text"], "VARIABLE TAIL")
+        self.assertNotIn("cache_control", blocks[1])
+
+    def test_content_blocks_single_block_without_sentinel(self):
+        self.assertEqual(A._content_blocks("no mark"), [{"type": "text", "text": "no mark"}])
+
+    def test_builders_embed_the_cache_sentinel(self):
+        from citeval.prompts import EVIDENCE_CACHE_MARK, critic, refuter, supporter
+        self.assertIn(EVIDENCE_CACHE_MARK, supporter.build_user("c", "t", "a"))
+        self.assertIn(EVIDENCE_CACHE_MARK, refuter.build_user("c", "t", "a", "increase"))
+        self.assertIn(EVIDENCE_CACHE_MARK,
+                      critic.build_user("c", "t", "a", [], {}, ["fully-supported"]))
+
+
+class TestRoundHook(unittest.TestCase):
+    def test_on_round_called_once_per_round(self):
+        seen: list[int] = []
+        cfg = A.AdjudicationConfig(self_consistency_rounds=3, min_valid_rounds=1,
+                                   adaptive_early_stopping=False,
+                                   on_round=lambda rn, cr: seen.append(rn))
+        A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                     client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=3)), config=cfg)
+        self.assertEqual(seen, [1, 2, 3])
+
+    def test_raising_hook_never_crashes_adjudication(self):
+        def _boom(rn, cr):
+            raise RuntimeError("hook should be swallowed")
+        cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                   adaptive_early_stopping=False, on_round=_boom)
+        v = A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                         client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=1)), config=cfg)
+        self.assertFalse(v.stub)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -53,8 +53,9 @@ def run_slice(claim_text: str, cited_pmid: str | None = None,
         raise ValueError("Provide cited_pmid or cited_doi")
     # C1 (core): normalize -> one ClaimUnit
     unit = ClaimUnit(atomic_claim=claim_text, cited_identifier=ident)
-    # C2: real grounding
-    g = ground(unit.cited_identifier)
+    # C2: real grounding. Full text is only consumed by the graded adjudicator, so the offline
+    # stub path skips the extra PMC round-trip entirely (keeps the no-key gate network-identical).
+    g = ground(unit.cited_identifier, with_full_text=graded)
     # C3: claim scope hint (populates direction on both paths)
     scope = parse_claim_scope(unit.atomic_claim)
     # C4: adjudicate — graded adversarial pipeline behind a flag, else the offline stub.

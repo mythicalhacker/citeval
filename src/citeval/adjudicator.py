@@ -26,9 +26,10 @@ Every threshold is a **PROVISIONAL, recalibratable seed** (RB3 tunes them jointl
 spot-check); only `OPUS_MODEL` is a hard invariant. All §6 evidence-dict keys are unchanged so
 C5 (`reporting.py`) renders with no fixup; the new numeric signals live in richer keys C5 ignores.
 
-Known limitation (WO-C4 manager decision): the grounding corpus is the cited paper's
-**title + abstract only** — PubMed metadata carries no full text. Full-text spans slot into
-`_grounding_segments` later without reshaping anything else.
+Grounding corpus (WO-C4 full-text): the cited paper's **title + abstract + budgeted PMC full
+text** when available (invariant #6: raw JATS from EFetch db=pmc), falling back to title + abstract
+when the paper is not in PMC. Full text is fed to the triad and appended as its own verbatim-guard
+segment (`_grounding_segments`); `evidence.verbatim_guard.grounding_corpus` reports the actual depth.
 
 No live API in CI: the Anthropic SDK is imported lazily (only when the default client is
 constructed), so importing this module never requires a key or a network. Tests inject a mock
@@ -52,6 +53,7 @@ from .objective_axes import (
     species_axis,
 )
 from .prompts import (
+    EVIDENCE_CACHE_MARK,
     GRADE_VALUES,
     NON_SUBSTANTIATING,
     NOT_ENOUGH_INFO,
@@ -89,6 +91,26 @@ _WS = re.compile(r"\s+")
 # ==================================================================================
 # Model client seam (mockable; default wraps the Anthropic Messages API on Opus 4.8)
 # ==================================================================================
+def _content_blocks(user: str) -> list[dict]:
+    """Split a user turn on `EVIDENCE_CACHE_MARK` into a cache-marked evidence prefix + the
+    per-call variable tail (Part C — prompt caching). The large reusable evidence block
+    (title + abstract + full_text [+ objective facts]) that precedes the mark gets a
+    `cache_control={"type":"ephemeral"}` breakpoint, so it is cached across the 3 agents and the
+    7 self-consistency rounds of a case (the evidence is identical; only the tail varies). The
+    sentinel is STRIPPED — the model never sees it. With no sentinel, a single plain block.
+
+    Pure and SDK-free so it is unit-testable offline; the real client passes the result as the
+    user message `content`. Mock clients never call this — they keep `user` as one string and the
+    invisible sentinel is inert, so their behaviour is unchanged."""
+    prefix, mark, rest = user.partition(EVIDENCE_CACHE_MARK)
+    if not mark:
+        return [{"type": "text", "text": user}]
+    blocks: list[dict] = [{"type": "text", "text": prefix, "cache_control": {"type": "ephemeral"}}]
+    if rest:
+        blocks.append({"type": "text", "text": rest})
+    return blocks
+
+
 class AnthropicModelClient:
     """Default model client. Lazily constructs the SDK client so importing this module
     (and running the offline slice/scorer/tests) never needs an API key or a network."""
@@ -102,11 +124,16 @@ class AnthropicModelClient:
         # claude-opus-4-8 deprecated temperature; the advocate/critic temperature config is
         # retained on the interface but not sent — self-consistency variance now comes from
         # default-temperature sampling.
+        #
+        # Part C (prompt caching): the user turn is sent as structured content blocks with a
+        # cache_control breakpoint on the large, reused evidence prefix (title/abstract/full_text),
+        # cutting repeat input cost/latency across the case's 21 triad calls. The seam signature is
+        # unchanged (`user` stays a single str), so mock clients keep working untouched.
         msg = self._client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system,
-            messages=[{"role": "user", "content": user}],
+            messages=[{"role": "user", "content": _content_blocks(user)}],
         )
         return "".join(
             getattr(b, "text", "") for b in msg.content
@@ -139,6 +166,10 @@ class AdjudicationConfig:
     adaptive_early_stopping: bool = True   # stop once rounds are unanimous (past the min floor)
     rollup: Optional[Callable[[list[AxisFinding]], str]] = None
     recalibration: Optional[Callable[[float], float]] = None
+    # Optional per-round progress hook (scorer verbose mode): called `on_round(i, critic_round)`
+    # after each triad sample so a slow live case is visibly alive within seconds. Default None
+    # (no-op); a raising callback must never crash adjudication, so it is invoked defensively.
+    on_round: Optional[Callable[[int, Optional[dict]], None]] = None
 
 
 # ==================================================================================
@@ -152,13 +183,19 @@ def _norm(s: str) -> str:
 def _grounding_segments(g: GroundedRecord) -> list[str]:
     """The verbatim-guard denominators: each source field normalized SEPARATELY.
 
-    A verbatim span must lie wholly within one segment — title and abstract are distinct
-    fields, so joining them would let a fabricated quote straddle the title↔abstract
-    junction and match text that exists contiguously in neither. KNOWN LIMITATION
-    (WO-C4): title + abstract only — no full text in PubMed metadata. Full-text segments
-    append here (each its own denominator) when C1 provides them; nothing else changes.
+    A verbatim span must lie wholly within one segment — title, abstract, and each full-text
+    SECTION are distinct, non-contiguous spans of the paper, so joining them would let a fabricated
+    quote straddle a junction and match text that exists contiguously in none. The budgeted full
+    text (invariant #6) is stored as its constituent sections joined by blank lines
+    (`select_budgeted_fulltext`); we split it back on those blank lines so each section is its OWN
+    denominator. That blocks a straddle across the abstract↔body or section↔section boundary (two
+    real but non-adjacent fragments) just as keeping title/abstract separate blocks the title↔
+    abstract straddle. When full text is unavailable (`g.full_text == ""`) it is simply absent and
+    the abstract-only behaviour is unchanged.
     """
-    return [seg for seg in (_norm(g.title), _norm(g.abstract)) if seg]
+    segments = [_norm(g.title), _norm(g.abstract)]
+    segments += [_norm(part) for part in re.split(r"\n{2,}", g.full_text)]
+    return [seg for seg in segments if seg]
 
 
 def _verbatim_survivors(points: Sequence[dict], segments: Sequence[str],
@@ -294,15 +331,15 @@ class _TriadSample:
 def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[str],
                objective_facts: dict, segments: Sequence[str], sample_idx: int,
                cfg: AdjudicationConfig) -> _TriadSample:
-    # Supporter (warm) → verbatim guard.
+    # Supporter (warm) → verbatim guard. Full text (when present) is fed as extra evidence.
     sup_raw = _call_agent(client, supporter.SYSTEM,
-                          supporter.build_user(claim_text, g.title, g.abstract),
+                          supporter.build_user(claim_text, g.title, g.abstract, g.full_text),
                           cfg.max_tokens_advocate, cfg.advocate_temperature)
     sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
 
     # Refuter (warm) → verbatim guard → routes_to hard-filter (b6).
     ref_raw = _call_agent(client, refuter.SYSTEM,
-                          refuter.build_user(claim_text, g.title, g.abstract, direction),
+                          refuter.build_user(claim_text, g.title, g.abstract, direction, g.full_text),
                           cfg.max_tokens_advocate, cfg.advocate_temperature)
     ref_survivors, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
     ref_grade_points = [p for p in ref_survivors if _routes_to_grade(p)]
@@ -311,7 +348,7 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
     # Critic (cool) over the blinded, order-randomized arguments — grade-routed points only.
     arguments = _blinded_arguments(sup_points, ref_grade_points, sample_idx)
     critic_user = critic.build_user(claim_text, g.title, g.abstract, arguments,
-                                    objective_facts, GRADE_VALUES, direction)
+                                    objective_facts, GRADE_VALUES, direction, g.full_text)
     critic_round = _call_agent(client, critic.SYSTEM, critic_user,
                                cfg.max_tokens_critic, cfg.critic_temperature)
     return _TriadSample(critic_round, sup_points, ref_grade_points, ref_rollup_points,
@@ -534,7 +571,7 @@ def _dedupe(points: Sequence[dict], reason_key: str) -> list[dict]:
 def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
                                sup: list[dict], ref_grade: list[dict], ref_rollup: list[dict],
                                sup_discarded: int, ref_discarded: int, rounds_run: int,
-                               cfg: AdjudicationConfig) -> AxisFinding:
+                               cfg: AdjudicationConfig, corpus_label: str) -> AxisFinding:
     verbalized = tier  # §6 `confidence.verbalized` is the emitted tier (a2 reconciliation)
     # Post-hoc recalibration of the emitted (primary) confidence, if a fitted map is supplied.
     calibration_note = ""
@@ -558,7 +595,7 @@ def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
         "refuter_scope_notes": ref_rollup,   # over_generalization (routed to rollup, not the grade)
         "verbatim_guard": {"supporter_discarded": sup_discarded,
                            "refuter_discarded": ref_discarded,
-                           "grounding_corpus": "title+abstract"},
+                           "grounding_corpus": corpus_label},
         "self_consistency": {"rounds_configured": cfg.self_consistency_rounds,
                              "rounds_run": rounds_run,
                              "rounds_valid": agg.n_valid,
@@ -611,6 +648,10 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
 
     segments = _grounding_segments(g)
     direction = scope.direction  # claim's asserted effect direction (refuter/critic direction test)
+    # Actual grounding depth for this case (Part B item 6): the verbatim guard + agents saw full
+    # text only when it was available; the evidence key reports which, honestly.
+    corpus_label = ("title+abstract+fulltext" if g.full_text
+                    else "title+abstract (full text unavailable)")
 
     # 2. Full-triad self-consistency: N rounds, warm advocates + cool critic, blinded transcripts.
     critic_rounds: list[Optional[dict]] = []
@@ -628,6 +669,11 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         sup_discarded_total += sample.sup_discarded
         ref_discarded_total += sample.ref_discarded
         rounds_run += 1
+        if cfg.on_round is not None:      # per-round progress (scorer verbose mode); never fatal
+            try:
+                cfg.on_round(rounds_run, sample.critic_round)
+            except Exception:             # noqa: BLE001 — a progress hook must not crash grading
+                pass
         # Adaptive early-stopping: stop only once the rounds run are BOTH past the min floor AND
         # a strict majority of the configured N (2*run > N) and unanimous — then the remaining
         # rounds cannot change the median-aware g* regardless of how they vote. Gating on a
@@ -651,7 +697,7 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     # 4. Substantive finding (§6 evidence keys) + assemble the 4 axes.
     substantive = _build_substantive_finding(
         agg, outcome, tier, sup_points, ref_grade_points, ref_rollup_points,
-        sup_discarded_total, ref_discarded_total, rounds_run, cfg)
+        sup_discarded_total, ref_discarded_total, rounds_run, cfg, corpus_label)
     findings = [retr, spec, popn, substantive]
 
     # 5. Swappable rollup for `overall`.
@@ -665,7 +711,7 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         "is carried by the metadata scope axes and folded into `overall` by a swappable rollup "
         "(RB1 §D scope-capping overridden — CONTEXT_PACK §6).",
         f"Verbatim guard: discarded {sup_discarded_total} supporter and {ref_discarded_total} "
-        "refuter point(s) whose quotes were not verbatim spans of the cited title+abstract.",
+        f"refuter point(s) whose quotes were not verbatim spans of the cited {corpus_label}.",
         f"Self-consistency: {rounds_run} full-triad round(s) run; exact agreement "
         f"{agg.a_exact:.2f}, adjacent agreement {agg.a_adj:.2f} over {agg.n_valid} valid round(s).",
     ]

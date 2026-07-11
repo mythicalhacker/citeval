@@ -11,7 +11,17 @@ Each role module exposes:
 """
 from __future__ import annotations
 
-from . import critic, refuter, supporter
+# Prompt-cache boundary sentinel (WO-C4 full-text §7). Defined BEFORE the role-module import below
+# so each `build_user` can import it without a circular-import failure. Each builder inserts it once,
+# immediately AFTER the large reusable evidence block (title + abstract + full_text [+ objective
+# facts for the critic]) and before the per-call variable tail. The real `AnthropicModelClient`
+# splits the user turn on this mark and puts a `cache_control` breakpoint on the evidence prefix, so
+# the ~6000-token evidence is cached across the 7 self-consistency rounds of a case. It is an
+# invisible ASCII Record-Separator: mock clients keep `user` as one string and ignore it, and the
+# real client STRIPS it before sending — the model never sees it, so behaviour is unchanged.
+EVIDENCE_CACHE_MARK = "\x1e"
+
+from . import critic, refuter, supporter  # noqa: E402 — must follow EVIDENCE_CACHE_MARK (imported by each)
 
 # --- RB1 ordinal grade scale (INTEGRATION_SPEC §1; a1) -----------------------------
 # The 6-level substantive-support ordinal, index 0 (best) → 5 (worst). This ordering is
@@ -66,4 +76,5 @@ __all__ = [
     "NON_GRADED_VALUES",
     "GRADE_VALUES",
     "VERBALIZED_CONFIDENCE",
+    "EVIDENCE_CACHE_MARK",
 ]

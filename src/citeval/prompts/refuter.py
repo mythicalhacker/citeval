@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from . import EVIDENCE_CACHE_MARK
+
 # RB2 distortion taxonomy (INTEGRATION_SPEC §2.1). `over_generalization` is *notable but
 # not graded* — it routes to `overall` via the swappable rollup, never into the grade.
 DISTORTION_TYPES: tuple[str, ...] = (
@@ -36,13 +38,14 @@ GRADE_PRESSURE: tuple[str, ...] = ("none", "mild", "strong")
 # RB2 (INTEGRATION_SPEC §2.1).
 SYSTEM = (
     "You are the REFUTER in an adversarial scientific-citation adjudication. You are given a "
-    "CLAIM and the cited paper's TITLE and ABSTRACT (the SOURCE), and the effect DIRECTION the "
-    "claim asserts. Build the STRONGEST honest, evidence-grounded case that the SOURCE does NOT "
+    "CLAIM and the cited paper's TITLE and ABSTRACT (the SOURCE), the effect DIRECTION the claim "
+    "asserts, and — when available — an excerpt of the SOURCE's FULL TEXT (Results/Discussion/"
+    "Conclusions). Build the STRONGEST honest, evidence-grounded case that the SOURCE does NOT "
     "substantively support the CLAIM.\n\n"
     "Hard rules:\n"
-    "- Every point MUST quote a VERBATIM span copied exactly from the SOURCE title or abstract. "
-    "Copy characters exactly; do not paraphrase inside `quote`. Points without a verbatim quote "
-    "are discarded.\n"
+    "- Every point MUST quote a VERBATIM span copied exactly from the SOURCE title, abstract, or "
+    "full-text excerpt. Copy characters exactly; do not paraphrase inside `quote`. Points without "
+    "a verbatim quote are discarded.\n"
     "- DIRECTION-REVERSAL PROBE: if the SOURCE's reported finding runs OPPOSITE to the claimed "
     "direction, that is the strongest objection — tag it `direction_reversal`.\n"
     "- Judge SUBSTANCE, holding scope constant. You MAY flag species/population/dose "
@@ -62,18 +65,25 @@ SYSTEM = (
 )
 
 
-def build_user(claim: str, title: str, abstract: str, direction: Optional[str] = None) -> str:
-    """Assemble the refuter's user turn from the claim, cited-source text, and the claim's
-    asserted effect `direction` (from `ScopeFrame.direction`; used for the direction-reversal
-    probe). `direction` is None when C3 could not ground one."""
+def build_user(claim: str, title: str, abstract: str, direction: Optional[str] = None,
+               full_text: str = "") -> str:
+    """Assemble the refuter's user turn from the claim, cited-source text, the claim's asserted
+    effect `direction` (from `ScopeFrame.direction`; used for the direction-reversal probe), and
+    the budgeted `full_text` excerpt (empty when unavailable). The abstract-only turn is unchanged
+    except for the invisible cache sentinel, which closes the reusable evidence block."""
     dir_line = direction if direction else "not stated"
+    ft = full_text.strip()
+    ft_block = f"\n\nSOURCE FULL TEXT (excerpt — abstract + Results/Discussion/Conclusions):\n{ft}" if ft else ""
+    source_span = "title, abstract, or full-text excerpt" if ft else "title or abstract"
     return (
         f"CLAIM:\n{claim.strip()}\n\n"
         f"CLAIM ASSERTED DIRECTION: {dir_line}\n\n"
         f"SOURCE TITLE:\n{title.strip()}\n\n"
-        f"SOURCE ABSTRACT:\n{abstract.strip()}\n\n"
+        f"SOURCE ABSTRACT:\n{abstract.strip()}"
+        f"{ft_block}"
+        f"{EVIDENCE_CACHE_MARK}\n\n"
         f"Allowed distortion_type tags: {', '.join(DISTORTION_TYPES)}.\n"
         f"Allowed routes_to values: {', '.join(ROUTES)}.\n"
-        "Return the JSON object described in your instructions. Quotes must be copied verbatim "
-        "from the SOURCE title or abstract above."
+        f"Return the JSON object described in your instructions. Quotes must be copied verbatim "
+        f"from the SOURCE {source_span} above."
     )

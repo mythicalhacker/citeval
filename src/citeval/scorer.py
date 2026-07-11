@@ -14,16 +14,28 @@ key) it stays PENDING and the objective scorecard is unchanged (16/17).
     python -m citeval.scorer                              # objective scorecard over eval_set.json
     python -m citeval.scorer --corpus corpus/corpus_objective.jsonl
     python -m citeval.scorer --graded --graded-reference labels.jsonl   # live graded + calibration
+    python -m citeval.scorer --graded --limit 3 -v       # 3-case smoke, per-round progress
     python -m citeval.scorer --emit-calibration-sample 30 --corpus corpus/corpus_objective.jsonl
+
+Observability + resumability (§D). A graded run appends one JSON line per case to
+`<out>/graded_predictions.jsonl` as each case completes (flushed), so `tail -f` shows cases
+landing live and a Ctrl-C/crash never loses completed cases — the next run SKIPS case_ids already
+present (resume) unless `--fresh`. `--limit N` scores only the first N cases (smoke). Per-case
+start/finish progress prints to stderr; `-v`/`CITEVAL_PROGRESS=1` adds a line per triad round.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import os
 import random
+import sys
+import time
+from dataclasses import replace
 from pathlib import Path
 
+from .adjudicator import AdjudicationConfig
 from .prompts import NON_SUBSTANTIATING, NOT_ENOUGH_INFO, ORDINAL_GRADES, ORDINAL_INDEX
 from .slice_runner import EVAL_PATH, graded_enabled, run_slice
 
@@ -371,26 +383,163 @@ def sample_calibration_manifest(cases: list[dict], n: int = 30, seed: int = 0,
             for c in picked]
 
 
-def score(cases: list[dict], graded: bool = False, references: dict | None = None) -> dict:
+# ==================================================================================
+# Observability + resumability (WO-C4 full-text §D): incremental predictions, progress,
+# --limit, resume/--fresh, coverage-by-evidence-depth
+# ==================================================================================
+PREDICTIONS_FILE = "graded_predictions.jsonl"
+
+
+def _log(msg: str) -> None:
+    """Flushed stderr progress (stdout stays the scorecard, so a pipe/tee is unaffected)."""
+    print(msg, file=sys.stderr, flush=True)
+
+
+def read_predictions(path: Path) -> dict:
+    """Already-computed graded predictions keyed by case_id (resume). Tolerates a blank/partial
+    trailing line from an interrupted run — the last flush before a crash may be incomplete."""
+    done: dict[str, dict] = {}
+    if not path.exists():
+        return done
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue                       # skip a partial line left by a mid-write crash
+        cid = row.get("case_id")
+        if cid:
+            done[cid] = row
+    return done
+
+
+def coverage_by_depth(records: list[dict]) -> dict:
+    """Graded/abstained/non-substantiating split by evidence depth (WO-C4 §D item 12).
+
+    Answers 'did full text raise coverage?' — computed over ALL graded predictions (no reference
+    labels required), so it is visible even before human grades exist."""
+    out: dict[str, dict] = {}
+    for depth in ("fulltext", "abstract"):
+        sub = [r for r in records if r.get("evidence_depth") == depth]
+        n = len(sub)
+        n_graded = sum(1 for r in sub if r.get("status") == "GRADED")
+        out[depth] = {
+            "n": n,
+            "graded": n_graded,
+            "abstained": sum(1 for r in sub if r.get("status") == "ABSTAINED"),
+            "non_substantiating": sum(1 for r in sub if r.get("status") == "NON_SUBSTANTIATING"),
+            "not_adjudicated": sum(1 for r in sub if r.get("status") == "NOT_ADJUDICATED"),
+            "coverage": round(n_graded / n, 4) if n else None,
+        }
+    return out
+
+
+def _finish_line(i: int, n: int, rec: dict, graded_so_far: int) -> str:
+    conf = rec.get("confidence")
+    a_exact = f"{conf:.2f}" if isinstance(conf, (int, float)) else "n/a"
+    grade = rec.get("grade") if rec.get("status") == "GRADED" else rec.get("status")
+    elapsed = rec.get("elapsed_s")
+    el = f"{elapsed:.1f}" if isinstance(elapsed, (int, float)) else "?"
+    return (f"[{i}/{n}] {rec.get('case_id')} depth={rec.get('evidence_depth')} grade={grade} "
+            f"a_exact={a_exact} elapsed={el}s (graded {graded_so_far}/{i})")
+
+
+def _round_hook(i: int, n: int, cid: str):
+    """Per-round progress callback (verbose): shows a case is alive within seconds of each round."""
+    def _hook(round_no: int, critic_round) -> None:
+        grade = critic_round.get("grade") if isinstance(critic_round, dict) else None
+        _log(f"[{i}/{n}] {cid}   · round {round_no} grade={grade or '—'}")
+    return _hook
+
+
+def score(cases: list[dict], graded: bool = False, references: dict | None = None, *,
+          out_dir: str | Path | None = None, limit: int | None = None, fresh: bool = False,
+          progress: bool = False, verbose: bool = False, client=None, config=None) -> dict:
+    """Score the corpus. When `graded`, per-case predictions are appended INCREMENTALLY to
+    `<out_dir>/graded_predictions.jsonl` (flushed) so a Ctrl-C never loses completed cases; on the
+    next run those case_ids are SKIPPED (resume) unless `fresh`. `limit` scores only the first N
+    cases (smoke test). `progress`/`verbose` stream stderr progress. `client`/`config` are threaded
+    to the graded adjudicator (mock injection for offline tests)."""
     references = references or {}
+    if limit is not None:
+        cases = cases[:limit]
+    n = len(cases)
+
+    # Resume bookkeeping (graded + a destination file only).
+    pred_path = (Path(out_dir) / PREDICTIONS_FILE) if (graded and out_dir) else None
+    done: dict[str, dict] = {}
+    pred_f = None
+    if pred_path is not None:
+        pred_path.parent.mkdir(parents=True, exist_ok=True)
+        if fresh:
+            pred_path.unlink(missing_ok=True)
+        else:
+            done = read_predictions(pred_path)
+        pred_f = pred_path.open("a", encoding="utf-8")
+        # A prior run may have crashed mid-write, leaving a partial newline-less last line. A bare
+        # append would GLUE the next record onto it, corrupting both into one unparseable line that
+        # read_predictions then drops — silently losing the recomputed case. Terminate the dangling
+        # partial line first so the recomputed record lands on its own parseable line.
+        if pred_path.exists() and pred_path.stat().st_size > 0:
+            with pred_path.open("rb") as _tail:
+                _tail.seek(-1, 2)
+                needs_nl = _tail.read(1) != b"\n"
+            if needs_nl:
+                pred_f.write("\n")
+                pred_f.flush()
+        if done:
+            _log(f"[resume] {len(done)} completed case(s) found in {pred_path.name} — skipping "
+                 "them (pass --fresh to recompute)")
+
     rows = []
     graded_records = []
-    for c in cases:
-        cid = c.get("case_id", c["cited_pmid"])
-        r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=graded)
-        v = r["verdict"]
-        pred = _pred(v)
-        rows.append({
-            "case_id": cid,
-            "gt": c["ground_truth_label"],
-            "pred_retraction": pred["retraction"],
-            "pred_scope": pred["scope"],
-            "overall": v.overall,
-            "species_verdict": _axis(v, "species_scope").verdict,
-        })
-        if graded:
-            gp = _graded_pred(v)
-            graded_records.append({"case_id": cid, **gp, "ref_grade": references.get(cid)})
+    graded_so_far = 0
+    try:
+        for i, c in enumerate(cases, 1):
+            cid = c.get("case_id", c["cited_pmid"])
+            resumed = graded and cid in done
+            use_graded = graded and not resumed
+            if progress:
+                _log(f"[{i}/{n}] {cid} start" + (" (resumed — reuse stored prediction)" if resumed else ""))
+            case_config = config
+            if use_graded and verbose:
+                case_config = replace(config or AdjudicationConfig(), on_round=_round_hook(i, n, cid))
+            t0 = time.perf_counter()
+            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=use_graded,
+                          client=client, config=case_config)
+            v = r["verdict"]
+            pred = _pred(v)
+            rows.append({
+                "case_id": cid,
+                "gt": c["ground_truth_label"],
+                "pred_retraction": pred["retraction"],
+                "pred_scope": pred["scope"],
+                "overall": v.overall,
+                "species_verdict": _axis(v, "species_scope").verdict,
+            })
+            if graded:
+                if resumed:
+                    # Re-attach the current reference (a sidecar may have been supplied since).
+                    rec = {**done[cid], "ref_grade": references.get(cid, done[cid].get("ref_grade"))}
+                else:
+                    gp = _graded_pred(v)
+                    depth = "fulltext" if r["grounded"].full_text else "abstract"
+                    rec = {"case_id": cid, "status": gp["status"], "grade": gp["grade"],
+                           "confidence": gp["confidence"], "ref_grade": references.get(cid),
+                           "evidence_depth": depth, "elapsed_s": round(time.perf_counter() - t0, 2)}
+                    if pred_f is not None:
+                        pred_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+                        pred_f.flush()     # a crash after this line never loses this case
+                graded_records.append(rec)
+                if rec.get("status") == "GRADED":
+                    graded_so_far += 1
+                if progress:
+                    _log(_finish_line(i, n, rec, graded_so_far))
+    finally:
+        if pred_f is not None:
+            pred_f.close()
 
     # Retraction detection: positives = RETRACTED cases; negatives = the rest.
     r_tp = sum(x["gt"] == "RETRACTED" and x["pred_retraction"] for x in rows)
@@ -435,6 +584,7 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
     }
     if graded:
         res["calibration"] = calibrate_graded(graded_records)
+        res["coverage_by_depth"] = coverage_by_depth(graded_records)
         res["graded_records"] = graded_records
     return res
 
@@ -494,6 +644,20 @@ def render_calibration(cal: dict) -> list[str]:
     return L
 
 
+def render_coverage_by_depth(cbd: dict) -> list[str]:
+    """Coverage split by grounding depth (WO-C4 §D item 12): does full text lift graded coverage?"""
+    L = ["## Coverage by evidence depth (did full text raise coverage?)", "",
+         "| depth | n | graded | abstained | non-subst. | coverage |",
+         "|---|---|---|---|---|---|"]
+    for label, key in (("full text", "fulltext"), ("abstract-only", "abstract")):
+        d = cbd.get(key, {})
+        L.append(f"| {label} | {d.get('n', 0)} | {d.get('graded', 0)} | {d.get('abstained', 0)} | "
+                 f"{d.get('non_substantiating', 0)} | {_fmt(d.get('coverage'))} |")
+    L += ["", "_Coverage = graded / (graded + abstained + non-substantiating), per depth. Higher "
+          "coverage on full-text cases is the signal that adversarial full text reduced abstention._", ""]
+    return L
+
+
 def render_scorecard(res: dict) -> str:
     rp, rr, rs = res["retraction"]["prf"]
     sp, sr, ss = res["scope"]["prf"]
@@ -531,6 +695,7 @@ def render_scorecard(res: dict) -> str:
               f"({', '.join(res['a_scope_observational'])}) — the cited paper is genuinely "
               "animal-only; not counted in scope metrics.", ""]
     if graded:
+        L += render_coverage_by_depth(res.get("coverage_by_depth") or {})
         L += render_calibration(cal)
     L += ["## Per-case", "", "| case | gt | retraction? | scope? | overall |",
           "|---|---|---|---|---|"]
@@ -558,6 +723,11 @@ def main() -> None:
                     help="human substantive_grade sidecar (jsonl/json keyed by case_id)")
     ap.add_argument("--emit-calibration-sample", dest="emit_sample", nargs="?", type=int,
                     const=30, help="write a stratified N-case (default 30) human spot-check manifest")
+    ap.add_argument("--limit", type=int, help="score only the first N cases (smoke test)")
+    ap.add_argument("--fresh", action="store_true",
+                    help="ignore any existing graded_predictions.jsonl and recompute from scratch")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="also print a line per triad round (or set CITEVAL_PROGRESS=1)")
     ap.add_argument("--out", default=str(OUT_DIR))
     args = ap.parse_args()
 
@@ -578,7 +748,9 @@ def main() -> None:
 
     graded = graded_enabled(args.graded)
     references = load_graded_references(cases, args.graded_reference)
-    res = score(cases, graded=graded, references=references)
+    verbose = args.verbose or os.environ.get("CITEVAL_PROGRESS", "").strip().lower() not in ("", "0", "false", "no", "off", "none")
+    res = score(cases, graded=graded, references=references, out_dir=out, limit=args.limit,
+                fresh=args.fresh, progress=graded, verbose=verbose)
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))
