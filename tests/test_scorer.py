@@ -15,15 +15,51 @@ _SRC = pathlib.Path(__file__).resolve().parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+import json
 import os
+import tempfile
+from pathlib import Path
+from unittest import mock
 
 from citeval import scorer as S
+from citeval.contracts import AxisFinding, CitedIdentifier, GroundedRecord, RetractionInfo, Verdict
 from citeval.prompts import NON_SUBSTANTIATING, NOT_ENOUGH_INFO
 from citeval.slice_runner import graded_enabled
 
 
 def rec(cid, grade, conf, status, ref):
     return {"case_id": cid, "grade": grade, "confidence": conf, "status": status, "ref_grade": ref}
+
+
+# --- fake graded pipeline (no network / no model): drive grade/status/depth per cited_pmid -------
+def _fake_grounded(pmid: str, full_text: str = "") -> GroundedRecord:
+    return GroundedRecord(
+        identifier=CitedIdentifier("pmid", pmid), title="t", abstract="a", mesh_all=[],
+        organism_tags=[], population_tags=[], sex_tags=[], publication_types=[],
+        retraction=RetractionInfo(status="NONE_FOUND"), has_humans=True, full_text=full_text)
+
+
+def _fake_verdict(pmid: str, grade: str, conf: float, status: str) -> Verdict:
+    ev = {"confidence": {"verbalized": "high", "agreement": conf, "n_samples": 7},
+          "abstained": status == "ABSTAINED", "non_substantiating": status == "NON_SUBSTANTIATING"}
+    axes = [
+        AxisFinding("retraction", "NOT_RETRACTED", "high", "metadata-grounded", "d"),
+        AxisFinding("species_scope", "SCOPE_CONSISTENT", "high", "metadata-grounded", "d"),
+        AxisFinding("population_scope", "SCOPE_CONSISTENT", "high", "metadata-grounded", "d"),
+        AxisFinding("substantive_support", grade, "high", "model-inferred", "d", ev),
+    ]
+    return Verdict(claim="x", cited_identifier=CitedIdentifier("pmid", pmid), overall="ok",
+                   axis_findings=axes, stub=False)
+
+
+def _make_fake_slice(script: dict, calls: list):
+    """script: pmid -> (grade, conf, status, full_text). `calls` records (pmid, graded_flag)."""
+    def _fake(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None, config=None):
+        calls.append((cited_pmid, graded))
+        grade, conf, status, ft = script[cited_pmid]
+        return {"verdict": _fake_verdict(cited_pmid, grade, conf, status),
+                "grounded": _fake_grounded(cited_pmid, ft)}
+    return _fake
 
 
 class PureMetricsTests(unittest.TestCase):
@@ -145,6 +181,125 @@ class SidecarAndSampleTests(unittest.TestCase):
         ids = {m["case_id"] for m in manifest}
         self.assertFalse(ids & set(S.RETRACTION_MISLABELS))            # the 3 mislabels excluded
         self.assertTrue(all(m["substantive_grade"] is None for m in manifest))  # human fills these
+
+
+class CoverageByDepthTests(unittest.TestCase):
+    def test_splits_and_computes_coverage(self):
+        records = [
+            {"evidence_depth": "fulltext", "status": "GRADED"},
+            {"evidence_depth": "fulltext", "status": "GRADED"},
+            {"evidence_depth": "fulltext", "status": "ABSTAINED"},
+            {"evidence_depth": "abstract", "status": "ABSTAINED"},
+            {"evidence_depth": "abstract", "status": "NON_SUBSTANTIATING"},
+        ]
+        cbd = S.coverage_by_depth(records)
+        self.assertEqual(cbd["fulltext"]["n"], 3)
+        self.assertEqual(cbd["fulltext"]["graded"], 2)
+        self.assertAlmostEqual(cbd["fulltext"]["coverage"], 2 / 3, places=3)
+        self.assertEqual(cbd["abstract"]["n"], 2)
+        self.assertEqual(cbd["abstract"]["coverage"], 0.0)   # full text lifted coverage over abstract-only
+
+    def test_empty_depth_coverage_is_none(self):
+        cbd = S.coverage_by_depth([{"evidence_depth": "fulltext", "status": "GRADED"}])
+        self.assertIsNone(cbd["abstract"]["coverage"])
+
+
+class ReadPredictionsTests(unittest.TestCase):
+    def test_tolerates_partial_trailing_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "graded_predictions.jsonl"
+            p.write_text('{"case_id": "A", "status": "GRADED"}\n{"case_id": "B", "status":')  # crash mid-write
+            done = S.read_predictions(p)
+            self.assertEqual(set(done), {"A"})               # partial line skipped, A survives
+
+
+class ObservabilityTests(unittest.TestCase):
+    def _cases(self, n):
+        return [{"case_id": f"K{i}", "cited_pmid": str(i), "claim_text": "c",
+                 "ground_truth_label": "SUPPORTED"} for i in range(n)]
+
+    def test_limit_scores_only_first_n(self):
+        cases = self._cases(6)
+        script = {str(i): ("fully-supported", 0.9, "GRADED", "body") for i in range(6)}
+        calls: list = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(S, "run_slice", _make_fake_slice(script, calls)):
+            res = S.score(cases, graded=True, out_dir=d, limit=3)
+        self.assertEqual(res["n"], 3)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(res["graded_records"]), 3)
+
+    def test_incremental_jsonl_written_per_case(self):
+        cases = self._cases(3)
+        script = {"0": ("fully-supported", 0.9, "GRADED", "body"),
+                  "1": (NOT_ENOUGH_INFO, 0.3, "ABSTAINED", ""),
+                  "2": (NON_SUBSTANTIATING, 0.5, "NON_SUBSTANTIATING", "body")}
+        calls: list = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(S, "run_slice", _make_fake_slice(script, calls)):
+            S.score(cases, graded=True, out_dir=d)
+            rows = S.read_predictions(Path(d) / "graded_predictions.jsonl")
+        self.assertEqual(set(rows), {"K0", "K1", "K2"})
+        self.assertEqual(rows["K0"]["evidence_depth"], "fulltext")
+        self.assertEqual(rows["K1"]["evidence_depth"], "abstract")
+        self.assertEqual(rows["K0"]["status"], "GRADED")
+
+    def test_resume_skips_completed_cases(self):
+        cases = self._cases(4)
+        script = {str(i): ("fully-supported", 0.9, "GRADED", "body") for i in range(4)}
+        with tempfile.TemporaryDirectory() as d:
+            pred = Path(d) / "graded_predictions.jsonl"
+            # Pre-seed K0, K1 as already computed (a prior interrupted run).
+            pred.write_text(
+                json.dumps({"case_id": "K0", "status": "GRADED", "grade": "contradicted",
+                            "confidence": 0.7, "ref_grade": None, "evidence_depth": "fulltext",
+                            "elapsed_s": 1.0}) + "\n"
+                + json.dumps({"case_id": "K1", "status": "ABSTAINED", "grade": NOT_ENOUGH_INFO,
+                              "confidence": 0.2, "ref_grade": None, "evidence_depth": "abstract",
+                              "elapsed_s": 1.0}) + "\n")
+            calls: list = []
+            with mock.patch.object(S, "run_slice", _make_fake_slice(script, calls)):
+                res = S.score(cases, graded=True, out_dir=d)
+            # K0,K1 re-run only for the cheap objective axes (graded=False); K2,K3 run graded.
+            by_pmid = dict(calls)
+            self.assertFalse(by_pmid["0"])           # K0 objective-only (resumed)
+            self.assertFalse(by_pmid["1"])           # K1 objective-only (resumed)
+            self.assertTrue(by_pmid["2"])            # K2 graded
+            self.assertTrue(by_pmid["3"])            # K3 graded
+            # The reused K0 prediction keeps its stored grade (not recomputed).
+            recs = {r["case_id"]: r for r in res["graded_records"]}
+            self.assertEqual(recs["K0"]["grade"], "contradicted")
+            self.assertEqual(len(res["graded_records"]), 4)     # all 4 in the final calibration set
+
+    def test_resume_after_partial_line_preserves_recomputed_case(self):
+        """A crash left K0 fully written + K1 partial (newline-less). On resume, K1 is recomputed and
+        must land on its OWN parseable line — not glued onto the partial line (which would corrupt
+        both and durably lose K1). All three cases end up parseable in the durable jsonl."""
+        cases = self._cases(3)
+        script = {str(i): ("fully-supported", 0.9, "GRADED", "body") for i in range(3)}
+        with tempfile.TemporaryDirectory() as d:
+            pred = Path(d) / "graded_predictions.jsonl"
+            pred.write_text(
+                json.dumps({"case_id": "K0", "status": "GRADED", "grade": "contradicted",
+                            "confidence": 0.7, "ref_grade": None, "evidence_depth": "fulltext",
+                            "elapsed_s": 1.0}) + "\n"
+                + '{"case_id": "K1", "status":')          # crash mid-write: partial, no newline
+            with mock.patch.object(S, "run_slice", _make_fake_slice(script, [])):
+                S.score(cases, graded=True, out_dir=d)
+            durable = S.read_predictions(pred)
+            self.assertEqual(set(durable), {"K0", "K1", "K2"})   # none lost; K1 recomputed cleanly
+            self.assertEqual(durable["K1"]["status"], "GRADED")  # freshly (re)computed, on its own line
+
+    def test_fresh_recomputes_all(self):
+        cases = self._cases(2)
+        script = {str(i): ("fully-supported", 0.9, "GRADED", "body") for i in range(2)}
+        with tempfile.TemporaryDirectory() as d:
+            pred = Path(d) / "graded_predictions.jsonl"
+            pred.write_text(json.dumps({"case_id": "K0", "status": "GRADED"}) + "\n")
+            calls: list = []
+            with mock.patch.object(S, "run_slice", _make_fake_slice(script, calls)):
+                S.score(cases, graded=True, out_dir=d, fresh=True)
+            self.assertTrue(all(g for _pmid, g in calls))       # every case re-run graded
 
 
 if __name__ == "__main__":

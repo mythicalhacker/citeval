@@ -12,17 +12,20 @@ manufacture support for a hedged/correctly-narrow claim or a passing/method cita
 """
 from __future__ import annotations
 
+from . import EVIDENCE_CACHE_MARK
+
 # RB2 (INTEGRATION_SPEC §2.1). The supporter is an advocate, not a judge: it must not grade,
 # and must ground every point in a verbatim quote so the verbatim guard can verify it.
 SYSTEM = (
     "You are the SUPPORTER in an adversarial scientific-citation adjudication. You are given a "
-    "CLAIM and the cited paper's TITLE and ABSTRACT (the SOURCE). Build the STRONGEST honest, "
-    "evidence-grounded case that the SOURCE substantively supports the CLAIM's asserted effect, "
-    "mechanism, direction, and magnitude/certainty.\n\n"
+    "CLAIM and the cited paper's TITLE and ABSTRACT (the SOURCE), and — when available — an "
+    "excerpt of the SOURCE's FULL TEXT (Results/Discussion/Conclusions). Build the STRONGEST "
+    "honest, evidence-grounded case that the SOURCE substantively supports the CLAIM's asserted "
+    "effect, mechanism, direction, and magnitude/certainty.\n\n"
     "Hard rules:\n"
-    "- Every point MUST quote a VERBATIM span copied exactly from the SOURCE title or abstract. "
-    "Do not paraphrase inside `quote`; copy characters exactly. Points without a verbatim quote "
-    "are discarded.\n"
+    "- Every point MUST quote a VERBATIM span copied exactly from the SOURCE title, abstract, or "
+    "full-text excerpt. Do not paraphrase inside `quote`; copy characters exactly. Points without "
+    "a verbatim quote are discarded.\n"
     "- Judge SUBSTANCE only. Do NOT argue about species/population/dose scope — that is handled "
     "on separate metadata axes, not by you. A claim that correctly states a narrow scope "
     "(\"in mice\", \"whether this holds in humans is unknown\") asserts exactly what was shown; "
@@ -40,12 +43,22 @@ SYSTEM = (
 )
 
 
-def build_user(claim: str, title: str, abstract: str) -> str:
-    """Assemble the supporter's user turn from the claim and cited-source text."""
+def build_user(claim: str, title: str, abstract: str, full_text: str = "") -> str:
+    """Assemble the supporter's user turn from the claim and cited-source text.
+
+    `full_text` is the budgeted PMC full-text excerpt (empty when unavailable). When present it is
+    added as a clearly delimited evidence segment; when empty the turn is the abstract-only turn,
+    byte-for-byte except for the invisible cache sentinel. The sentinel closes the reusable evidence
+    block (title + abstract + full_text) so the real client caches it across rounds."""
+    ft = full_text.strip()
+    ft_block = f"\n\nSOURCE FULL TEXT (excerpt — abstract + Results/Discussion/Conclusions):\n{ft}" if ft else ""
+    source_span = "title, abstract, or full-text excerpt" if ft else "title or abstract"
     return (
         f"CLAIM:\n{claim.strip()}\n\n"
         f"SOURCE TITLE:\n{title.strip()}\n\n"
-        f"SOURCE ABSTRACT:\n{abstract.strip()}\n\n"
-        "Return the JSON object described in your instructions. Quotes must be copied verbatim "
-        "from the SOURCE title or abstract above."
+        f"SOURCE ABSTRACT:\n{abstract.strip()}"
+        f"{ft_block}"
+        f"{EVIDENCE_CACHE_MARK}\n\n"
+        f"Return the JSON object described in your instructions. Quotes must be copied verbatim "
+        f"from the SOURCE {source_span} above."
     )
