@@ -1,25 +1,40 @@
-"""C6b — Scorer / harness (objective axes).
+"""C6b — Scorer / harness (objective axes + RB3 graded-axis calibration).
 
-Runs the current pipeline over a corpus and reports per-axis + per-class metrics:
-retraction detection, species/population scope detection, and specificity on controls.
-This is the proof-of-correctness artifact — measured, not asserted.
+Runs the pipeline over a corpus and reports per-axis + per-class metrics: retraction
+detection, species/population scope detection, and specificity on controls. This is the
+proof-of-correctness artifact — measured, not asserted.
 
-The graded substantive-support axis is scored once C4 (the adversarial adjudicator) lands;
-until then its calibration metric is reported as PENDING and the axis is counted as abstained.
+The graded `substantive_support` axis (RB3) is scored when the graded C4 is run (`--graded`,
+needs a key) AND a **human** graded reference label is supplied per case (the anti-circularity
+guard — the reference is NEVER model-generated). The reference arrives as a `substantive_grade`
+sidecar: either a per-case field or a `--graded-reference` file keyed by `case_id`. Until
+references exist, the calibration block reports "pending reference labels"; offline (stub, no
+key) it stays PENDING and the objective scorecard is unchanged (16/17).
 
-    python -m citeval.scorer                 # scores eval_set.json
-    python -m citeval.scorer --corpus path   # scores a generated corpus (jsonl or json)
+    python -m citeval.scorer                              # objective scorecard over eval_set.json
+    python -m citeval.scorer --corpus corpus/corpus_objective.jsonl
+    python -m citeval.scorer --graded --graded-reference labels.jsonl   # live graded + calibration
+    python -m citeval.scorer --emit-calibration-sample 30 --corpus corpus/corpus_objective.jsonl
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
+import random
 from pathlib import Path
 
-from .slice_runner import EVAL_PATH, run_slice
+from .prompts import NON_SUBSTANTIATING, NOT_ENOUGH_INFO, ORDINAL_GRADES, ORDINAL_INDEX
+from .slice_runner import EVAL_PATH, graded_enabled, run_slice
 
 WORKSPACE = Path(__file__).resolve().parents[2]
 OUT_DIR = WORKSPACE / "outputs" / "scorecard"
+CORPUS_OBJECTIVE = WORKSPACE / "corpus" / "corpus_objective.jsonl"
+
+# The 3 corpus cases whose cited papers are actually retracted (per RetractionWatch × NCBI)
+# but are labelled SCOPE_MISMATCH — they belong to the retraction axis, not a clean substantive
+# grade, so they are excluded from the calibration sample (WO-C4-integrate post-corpus update).
+RETRACTION_MISLABELS = ("Bs14", "Bp02", "Bp03")
 
 
 def _axis(v, axis):
@@ -45,20 +60,337 @@ def _fmt(x):
     return "n/a" if x is None else f"{x:.2f}"
 
 
-def score(cases: list[dict]) -> dict:
-    rows = []
+# ==================================================================================
+# Graded-axis prediction extraction (from a graded Verdict's substantive_support axis)
+# ==================================================================================
+def _graded_pred(v) -> dict:
+    """Extract the graded prediction (grade, confidence, status) from a Verdict.
+
+    `status`: GRADED (a real ordinal grade) / ABSTAINED (NEI) / NON_SUBSTANTIATING (Trap 2) /
+    NOT_ADJUDICATED (the stub — no graded prediction). Only GRADED rows enter the calibration
+    numerator; ABSTAINED + NON_SUBSTANTIATING reduce coverage (RB3 Part 2)."""
+    f = _axis(v, "substantive_support")
+    ev = f.evidence or {}
+    conf = (ev.get("confidence") or {}).get("agreement")
+    if bool(ev.get("non_substantiating")):
+        status = "NON_SUBSTANTIATING"
+    elif bool(ev.get("abstained")) or f.verdict == NOT_ENOUGH_INFO:
+        status = "ABSTAINED"
+    elif f.provenance == "stub-not-adjudicated" or f.verdict in ("", "NOT_ADJUDICATED"):
+        status = "NOT_ADJUDICATED"
+    else:
+        status = "GRADED"
+    return {"grade": f.verdict, "confidence": conf, "status": status}
+
+
+# ==================================================================================
+# RB3 calibration metrics — PURE functions (unit-tested directly on mocked fixtures)
+# ==================================================================================
+def brier(items) -> float | None:
+    """Brier score: mean (conf − correct)². `items` = [(confidence, correct_bool), ...]."""
+    pts = [(c, 1.0 if ok else 0.0) for c, ok in items if isinstance(c, (int, float))]
+    if not pts:
+        return None
+    return sum((c - y) ** 2 for c, y in pts) / len(pts)
+
+
+def selective_risk_coverage(items) -> dict:
+    """Selective risk vs coverage (RB3 Part 3). `items` = [(confidence, correct_bool), ...].
+
+    Sort by confidence desc; for each prefix report (coverage, selective_risk). AURC = mean
+    selective risk over prefixes; also risk at ~80% coverage. Lower is better."""
+    pts = [(c, bool(ok)) for c, ok in items if isinstance(c, (int, float))]
+    if not pts:
+        return {"aurc": None, "risk_at_80": None, "operating_points": []}
+    pts.sort(key=lambda t: t[0], reverse=True)
+    n = len(pts)
+    ops, errors, risks = [], 0, []
+    risk_at_80 = None
+    for k, (_c, ok) in enumerate(pts, 1):
+        if not ok:
+            errors += 1
+        coverage = k / n
+        risk = errors / k
+        risks.append(risk)
+        ops.append({"coverage": round(coverage, 4), "risk": round(risk, 4)})
+        if risk_at_80 is None and coverage >= 0.80:
+            risk_at_80 = risk
+    aurc = sum(risks) / n
+    return {"aurc": aurc, "risk_at_80": risk_at_80, "operating_points": ops}
+
+
+def quadratic_weighted_kappa(preds, refs, n_classes: int = len(ORDINAL_GRADES)) -> float | None:
+    """QWK over the 0..n_classes-1 ordinal (wᵢⱼ = (i−j)²/(N−1)²). None if undefined."""
+    pairs = [(p, r) for p, r in zip(preds, refs) if p is not None and r is not None]
+    if not pairs or n_classes < 2:
+        return None
+    N = n_classes
+    O = [[0] * N for _ in range(N)]
+    prow = [0] * N
+    rcol = [0] * N
+    for p, r in pairs:
+        O[p][r] += 1
+        prow[p] += 1
+        rcol[r] += 1
+    total = len(pairs)
+    num = den = 0.0
+    for i in range(N):
+        for j in range(N):
+            w = (i - j) ** 2 / (N - 1) ** 2
+            e = prow[i] * rcol[j] / total
+            num += w * O[i][j]
+            den += w * e
+    if den == 0:
+        return 1.0  # no expected disagreement possible ⇒ perfect by convention
+    return 1.0 - num / den
+
+
+def accuracy(preds, refs, adjacent: bool = False) -> float | None:
+    pairs = [(p, r) for p, r in zip(preds, refs) if p is not None and r is not None]
+    if not pairs:
+        return None
+    hits = sum(1 for p, r in pairs if (abs(p - r) <= 1 if adjacent else p == r))
+    return hits / len(pairs)
+
+
+def _wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score interval for a binomial proportion (RB3 reliability diagram)."""
+    if n == 0:
+        return (0.0, 0.0)
+    p = k / n
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, center - half), min(1.0, center + half))
+
+
+def reliability_bins(items, n_bins: int = 4) -> list[dict]:
+    """Equal-mass reliability bins. `items` = [(confidence, correct_bool), ...]."""
+    pts = sorted(((c, bool(ok)) for c, ok in items if isinstance(c, (int, float))),
+                 key=lambda t: t[0])
+    n = len(pts)
+    if n == 0:
+        return []
+    n_bins = max(1, min(n_bins, n))
+    bins = []
+    for b in range(n_bins):
+        lo = b * n // n_bins
+        hi = (b + 1) * n // n_bins if b < n_bins - 1 else n
+        chunk = pts[lo:hi]
+        if not chunk:
+            continue
+        k = sum(1 for _c, ok in chunk if ok)
+        mean_conf = sum(c for c, _ok in chunk) / len(chunk)
+        acc = k / len(chunk)
+        lo_ci, hi_ci = _wilson_ci(k, len(chunk))
+        bins.append({"n": len(chunk), "mean_conf": round(mean_conf, 4), "accuracy": round(acc, 4),
+                     "wilson_ci": [round(lo_ci, 4), round(hi_ci, 4)]})
+    return bins
+
+
+def ece(items, n_bins: int = 4) -> float | None:
+    """Expected Calibration Error over equal-mass bins (RB3: caveated, high variance at small N)."""
+    bins = reliability_bins(items, n_bins)
+    if not bins:
+        return None
+    n = sum(b["n"] for b in bins)
+    return sum(b["n"] / n * abs(b["mean_conf"] - b["accuracy"]) for b in bins)
+
+
+def auroc(items) -> float | None:
+    """AUROC of confidence-vs-correctness (Mann–Whitney). None if one class is empty."""
+    pos = [c for c, ok in items if ok and isinstance(c, (int, float))]
+    neg = [c for c, ok in items if (not ok) and isinstance(c, (int, float))]
+    if not pos or not neg:
+        return None
+    wins = 0.0
+    for cp in pos:
+        for cn in neg:
+            wins += 1.0 if cp > cn else (0.5 if cp == cn else 0.0)
+    return wins / (len(pos) * len(neg))
+
+
+def auroc_bootstrap_ci(items, n_boot: int = 1000, seed: int = 0) -> tuple[float, float] | None:
+    """Bootstrap 95% CI for AUROC (seeded for reproducibility)."""
+    clean = [(c, bool(ok)) for c, ok in items if isinstance(c, (int, float))]
+    if len(clean) < 3:
+        return None
+    rng = random.Random(seed)
+    vals = []
+    n = len(clean)
+    for _ in range(n_boot):
+        sample = [clean[rng.randrange(n)] for _ in range(n)]
+        a = auroc(sample)
+        if a is not None:
+            vals.append(a)
+    if len(vals) < 2:
+        return None
+    vals.sort()
+    lo = vals[int(0.025 * (len(vals) - 1))]
+    hi = vals[int(0.975 * (len(vals) - 1))]
+    return (lo, hi)
+
+
+def confidence_spread(confs) -> dict:
+    """Agreement-discrimination diagnostic (manager note): if the emitted confidence (a_exact)
+    saturates near 1.0 for every case, it has stopped discriminating and the tier is meaningless.
+    Report the spread + a degeneracy flag so a broken signal is VISIBLE (remedy: raise the critic
+    temperature). This is not calibration — it is a guard that the calibration input is alive."""
+    xs = [c for c in confs if isinstance(c, (int, float))]
+    if not xs:
+        return {"n": 0, "degenerate": None}
+    mean = sum(xs) / len(xs)
+    stdev = (sum((x - mean) ** 2 for x in xs) / len(xs)) ** 0.5
+    hist = {"[0,0.5)": 0, "[0.5,0.7)": 0, "[0.7,0.9)": 0, "[0.9,1.0]": 0}
+    for x in xs:
+        if x < 0.5:
+            hist["[0,0.5)"] += 1
+        elif x < 0.7:
+            hist["[0.5,0.7)"] += 1
+        elif x < 0.9:
+            hist["[0.7,0.9)"] += 1
+        else:
+            hist["[0.9,1.0]"] += 1
+    degenerate = stdev < 0.05 or hist["[0.9,1.0]"] == len(xs)
+    return {"n": len(xs), "min": round(min(xs), 4), "max": round(max(xs), 4),
+            "mean": round(mean, 4), "stdev": round(stdev, 4), "histogram": hist,
+            "degenerate": bool(degenerate)}
+
+
+def calibrate_graded(records) -> dict:
+    """Compute the RB3 graded-axis calibration block from joined prediction+reference records.
+
+    `records` = [{case_id, grade, confidence, status, ref_grade}, ...]. Only records with a
+    human `ref_grade` (a real ordinal grade) are labeled; among those, GRADED rows feed the
+    metrics and ABSTAINED / NON_SUBSTANTIATING rows reduce coverage. Returns
+    {"status": "pending"} when there are no reference labels yet."""
+    labeled = [r for r in records if r.get("ref_grade") in ORDINAL_INDEX]
+    if not labeled:
+        return {"status": "pending", "n_records": len(records), "n_labeled": 0}
+
+    graded = [r for r in labeled if r.get("status") == "GRADED" and r.get("grade") in ORDINAL_INDEX]
+    non_graded = [r for r in labeled if r.get("status") in ("ABSTAINED", "NON_SUBSTANTIATING")]
+    n_labeled = len(labeled)
+    coverage = len(graded) / n_labeled if n_labeled else 0.0
+
+    preds = [ORDINAL_INDEX[r["grade"]] for r in graded]
+    refs = [ORDINAL_INDEX[r["ref_grade"]] for r in graded]
+    exact_items = [(r["confidence"], p == q) for r, p, q in zip(graded, preds, refs)]
+    adj_items = [(r["confidence"], abs(p - q) <= 1) for r, p, q in zip(graded, preds, refs)]
+    n_errors = sum(1 for p, q in zip(preds, refs) if p != q)
+
+    return {
+        "status": "scored",
+        "n_labeled": n_labeled,
+        "n_graded": len(graded),
+        "n_abstained": sum(1 for r in non_graded if r["status"] == "ABSTAINED"),
+        "n_non_substantiating": sum(1 for r in non_graded if r["status"] == "NON_SUBSTANTIATING"),
+        "coverage": round(coverage, 4),
+        "selective_risk": round(n_errors / len(graded), 4) if graded else None,
+        "brier_exact": brier(exact_items),
+        "brier_adjacent": brier(adj_items),
+        "accuracy_exact": accuracy(preds, refs),
+        "accuracy_adjacent": accuracy(preds, refs, adjacent=True),
+        "qwk": quadratic_weighted_kappa(preds, refs),
+        "risk_coverage": selective_risk_coverage(exact_items),
+        "ece": ece(exact_items),
+        "reliability_bins": reliability_bins(exact_items),
+        "auroc": auroc(exact_items),
+        "auroc_ci": auroc_bootstrap_ci(exact_items),
+        "adjacent_prediction_coverage": accuracy(preds, refs, adjacent=True),  # conformal, diagnostic-only
+        "confidence_spread": confidence_spread([r["confidence"] for r in graded]),
+    }
+
+
+# ==================================================================================
+# Human graded-reference sidecar (anti-circularity: NEVER model-generated)
+# ==================================================================================
+def load_graded_references(cases: list[dict], sidecar_path: str | None = None) -> dict:
+    """Reference grades keyed by case_id, from a per-case `substantive_grade` field and/or a
+    sidecar file (jsonl or json keyed by case_id, field `substantive_grade`). Only values on the
+    RB1 ordinal are accepted; the scorer never fabricates a reference.
+
+    ANTI-CIRCULARITY: the reference field is ONLY `substantive_grade` — deliberately NOT the bare
+    `grade` key the scorer stores its own MODEL predictions under (`graded_records[*].grade`). The
+    key-name distinction is the structural barrier that stops the tool's own output from being
+    re-ingested as a human reference (CLAUDE.md: enforce structurally, not by convention)."""
+    refs: dict[str, str] = {}
     for c in cases:
-        r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"])
+        g = c.get("substantive_grade")
+        if isinstance(g, str) and g in ORDINAL_INDEX:
+            refs[c.get("case_id", c.get("cited_pmid"))] = g
+    if sidecar_path:
+        p = Path(sidecar_path)
+        rows: list[dict]
+        if p.suffix == ".jsonl":
+            rows = [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+        else:
+            raw = json.loads(p.read_text())
+            rows = raw if isinstance(raw, list) else raw.get("cases", [])
+        for row in rows:
+            cid = row.get("case_id")
+            g = row.get("substantive_grade")
+            if cid and isinstance(g, str) and g in ORDINAL_INDEX:
+                refs[cid] = g
+    return refs
+
+
+def sample_calibration_manifest(cases: list[dict], n: int = 30, seed: int = 0,
+                                exclude=RETRACTION_MISLABELS) -> list[dict]:
+    """Draw a stratified ~20–40 case manifest for the HUMAN spot-check (RB3 §3.4).
+
+    Emits case_ids + claim/cited-paper context ONLY — no grades (the human assigns them).
+    Stratified across `ground_truth_label` × `confidence_tier` for case-type diversity, excluding
+    the retraction-mislabelled cases. Deterministic (seeded)."""
+    pool = [c for c in cases if c.get("case_id") not in set(exclude)]
+    strata: dict[tuple, list[dict]] = {}
+    for c in pool:
+        key = (c.get("ground_truth_label", "?"), c.get("confidence_tier", "?"))
+        strata.setdefault(key, []).append(c)
+    rng = random.Random(seed)
+    for v in strata.values():
+        rng.shuffle(v)
+    # Round-robin across strata for an even spread until we reach n.
+    order = sorted(strata)
+    picked: list[dict] = []
+    while len(picked) < min(n, len(pool)):
+        progressed = False
+        for key in order:
+            if strata[key]:
+                picked.append(strata[key].pop())
+                progressed = True
+                if len(picked) >= min(n, len(pool)):
+                    break
+        if not progressed:
+            break
+    return [{"case_id": c.get("case_id"), "cited_pmid": c.get("cited_pmid"),
+             "ground_truth_label": c.get("ground_truth_label"),
+             "confidence_tier": c.get("confidence_tier"),
+             "claim_text": c.get("claim_text"), "cited_title": c.get("cited_title"),
+             "substantive_grade": None}  # <- the human fills this in (blind to the agent)
+            for c in picked]
+
+
+def score(cases: list[dict], graded: bool = False, references: dict | None = None) -> dict:
+    references = references or {}
+    rows = []
+    graded_records = []
+    for c in cases:
+        cid = c.get("case_id", c["cited_pmid"])
+        r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=graded)
         v = r["verdict"]
         pred = _pred(v)
         rows.append({
-            "case_id": c.get("case_id", c["cited_pmid"]),
+            "case_id": cid,
             "gt": c["ground_truth_label"],
             "pred_retraction": pred["retraction"],
             "pred_scope": pred["scope"],
             "overall": v.overall,
             "species_verdict": _axis(v, "species_scope").verdict,
         })
+        if graded:
+            gp = _graded_pred(v)
+            graded_records.append({"case_id": cid, **gp, "ref_grade": references.get(cid)})
 
     # Retraction detection: positives = RETRACTED cases; negatives = the rest.
     r_tp = sum(x["gt"] == "RETRACTED" and x["pred_retraction"] for x in rows)
@@ -89,8 +421,8 @@ def score(cases: list[dict]) -> dict:
 
     a_scope_fp = [x["case_id"] for x in rows if x["gt"] == "RETRACTED" and x["pred_scope"]]
 
-    return {
-        "n": len(rows), "rows": rows,
+    res = {
+        "n": len(rows), "rows": rows, "graded": graded,
         "retraction": {"tp": r_tp, "fp": r_fp, "fn": r_fn, "tn": r_tn,
                        "prf": _prf(r_tp, r_fp, r_fn, r_tn)},
         "scope": {"tp": s_tp, "fp": s_fp, "fn": s_fn, "tn": s_tn,
@@ -101,6 +433,65 @@ def score(cases: list[dict]) -> dict:
         "overall_accuracy": (n_correct, len(rows)),
         "a_scope_observational": a_scope_fp,
     }
+    if graded:
+        res["calibration"] = calibrate_graded(graded_records)
+        res["graded_records"] = graded_records
+    return res
+
+
+def _fmt_metric(x):
+    return "PENDING" if x is None else f"{x:.3f}"
+
+
+def render_calibration(cal: dict) -> list[str]:
+    """The graded substantive-support calibration block (RB3 Part 3)."""
+    L = ["## Substantive-support calibration (graded axis, RB3)", ""]
+    if cal.get("status") == "pending":
+        L += [f"- **Graded-axis calibration:** pending reference labels — {cal.get('n_records', 0)} "
+              "graded prediction(s) produced, but no HUMAN `substantive_grade` reference supplied "
+              "yet (anti-circularity: the reference is never model-generated). Provide a "
+              "`--graded-reference` sidecar to score.", ""]
+        return L
+    rc = cal.get("risk_coverage", {})
+    cs = cal.get("confidence_spread", {})
+    L += [
+        f"- **Coverage:** {cal['coverage']:.2f} ({cal['n_graded']} graded / {cal['n_labeled']} "
+        f"labeled; {cal['n_abstained']} abstained + {cal['n_non_substantiating']} non-substantiating "
+        "excluded from grading metrics).",
+        f"- **Selective risk** (errors/graded): {_fmt_metric(cal['selective_risk'])}",
+        f"- **Brier** — exact {_fmt_metric(cal['brier_exact'])} · ±1-adjacent "
+        f"{_fmt_metric(cal['brier_adjacent'])}",
+        f"- **Accuracy** — exact {_fmt_metric(cal['accuracy_exact'])} · ±1-adjacent "
+        f"{_fmt_metric(cal['accuracy_adjacent'])}",
+        f"- **Quadratic-weighted kappa (QWK):** {_fmt_metric(cal['qwk'])}",
+        f"- **AURC:** {_fmt_metric(rc.get('aurc'))} · **risk@80% coverage:** "
+        f"{_fmt_metric(rc.get('risk_at_80'))}",
+        f"- **ECE** (4 equal-mass bins; _rough at small N — high variance_): {_fmt_metric(cal['ece'])}",
+        f"- **AUROC** (conf vs correctness): {_fmt_metric(cal['auroc'])}"
+        + (f" (95% CI {cal['auroc_ci'][0]:.2f}–{cal['auroc_ci'][1]:.2f})" if cal.get("auroc_ci") else ""),
+        f"- **Conformal ±1 prediction-set coverage** (_diagnostic only; split-conformal unreliable "
+        f"at N={cal['n_graded']}, ~1000 needed_): {_fmt_metric(cal['adjacent_prediction_coverage'])}",
+        "",
+    ]
+    # Agreement-discrimination diagnostic (manager note): confidence must actually discriminate.
+    if cs.get("n"):
+        warn = "  ⚠️ **confidence appears degenerate/saturated — raise the critic temperature**" \
+               if cs.get("degenerate") else ""
+        L += [
+            f"- **Confidence discrimination:** a_exact spread mean {cs['mean']:.2f} ± {cs['stdev']:.2f} "
+            f"(range {cs['min']:.2f}–{cs['max']:.2f}); histogram {cs['histogram']}." + warn,
+            "  _If confidence saturates near 1.0 for every case it has stopped discriminating; the "
+            "human spot-check (top tier measurably more accurate than bottom) is the ultimate test._",
+            "",
+        ]
+    if cal.get("reliability_bins"):
+        L += ["**Reliability diagram** (equal-mass bins; Wilson 95% CIs, bin counts):", "",
+              "| bin | n | mean conf | accuracy | Wilson CI |", "|---|---|---|---|---|"]
+        for b in cal["reliability_bins"]:
+            L.append(f"| · | {b['n']} | {b['mean_conf']:.2f} | {b['accuracy']:.2f} | "
+                     f"[{b['wilson_ci'][0]:.2f}, {b['wilson_ci'][1]:.2f}] |")
+        L.append("")
+    return L
 
 
 def render_scorecard(res: dict) -> str:
@@ -108,10 +499,18 @@ def render_scorecard(res: dict) -> str:
     sp, sr, ss = res["scope"]["prf"]
     clean, nctrl = res["control_specificity"]
     ncorr, ntot = res["overall_accuracy"]
-    L = ["# Scorecard — objective axes (measured)", "",
-         f"Corpus: {res['n']} cases. Pipeline: C2 grounding (real) + C3-lite scope (lexical) "
-         "+ C4-stub. Graded substantive axis: **PENDING** (adversarial adjudicator + calibration "
-         "not yet integrated).", "",
+    graded = res.get("graded")
+    c4_label = "C4 graded (adversarial, Opus 4.8)" if graded else "C4-stub"
+    cal = res.get("calibration") or {}
+    if not graded:
+        graded_line = "**PENDING** (adversarial adjudicator not run — pass --graded)"
+    elif cal.get("status") == "pending":
+        graded_line = "**pending reference labels** (graded predictions produced; no human reference yet)"
+    else:
+        graded_line = f"**SCORED** (coverage {cal.get('coverage', 0):.2f}, see calibration block below)"
+    L = ["# Scorecard — objective axes + graded calibration (measured)", "",
+         f"Corpus: {res['n']} cases. Pipeline: C2 grounding (real) + C3 scope "
+         f"+ {c4_label}. Graded substantive axis: {graded_line}.", "",
          "## Per-axis metrics", "",
          "| Axis | Precision | Recall | Specificity | TP/FP/FN/TN |",
          "|---|---|---|---|---|",
@@ -122,7 +521,7 @@ def render_scorecard(res: dict) -> str:
          "",
          f"- **Control specificity** (SUPPORTED cases clean on both axes): {clean}/{nctrl}",
          f"- **Overall correct finding**: {ncorr}/{ntot}",
-         f"- **Graded-axis calibration**: PENDING (C4 not integrated)", ""]
+         f"- **Graded-axis calibration**: {graded_line}", ""]
     if res["scope"]["missed"]:
         L += [f"- **Scope misses (C3-lite limitation, motivates Opus C3 / WO-C3):** "
               f"{', '.join(res['scope']['missed'])} — claim asserts human relevance without an "
@@ -131,31 +530,55 @@ def render_scorecard(res: dict) -> str:
         L += [f"- _Observational:_ retracted-case(s) also flagged species mismatch "
               f"({', '.join(res['a_scope_observational'])}) — the cited paper is genuinely "
               "animal-only; not counted in scope metrics.", ""]
+    if graded:
+        L += render_calibration(cal)
     L += ["## Per-case", "", "| case | gt | retraction? | scope? | overall |",
           "|---|---|---|---|---|"]
     for x in res["rows"]:
         L.append(f"| {x['case_id']} | {x['gt']} | {'Y' if x['pred_retraction'] else '·'} | "
                  f"{'Y' if x['pred_scope'] else '·'} | {x['overall'][:46]} |")
     L += ["", "_Retraction + scope labels are metadata-grounded; this scorecard measures the "
-          "objective axes. The graded substantive axis is added when C4 lands, with a calibration "
-          "metric per RB3._"]
+          "objective axes. The graded substantive axis is calibrated against a HUMAN "
+          "`substantive_grade` reference (never model-generated) per RB3._"]
     return "\n".join(L) + "\n"
+
+
+def _load_corpus(path: Path) -> list[dict]:
+    if path.suffix == ".jsonl":
+        return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return json.loads(path.read_text())["cases"]
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", help="path to a corpus json/jsonl; defaults to eval_set.json")
+    ap.add_argument("--graded", action="store_true",
+                    help="run the graded adversarial C4 (needs ANTHROPIC_API_KEY) + calibration")
+    ap.add_argument("--graded-reference", dest="graded_reference",
+                    help="human substantive_grade sidecar (jsonl/json keyed by case_id)")
+    ap.add_argument("--emit-calibration-sample", dest="emit_sample", nargs="?", type=int,
+                    const=30, help="write a stratified N-case (default 30) human spot-check manifest")
     ap.add_argument("--out", default=str(OUT_DIR))
     args = ap.parse_args()
-    if args.corpus:
-        p = Path(args.corpus)
-        raw = p.read_text().splitlines() if p.suffix == ".jsonl" else None
-        cases = [json.loads(l) for l in raw] if raw else json.loads(p.read_text())["cases"]
-    else:
-        cases = json.loads(EVAL_PATH.read_text())["cases"]
-    res = score(cases)
+
+    corpus_path = Path(args.corpus) if args.corpus else EVAL_PATH
+    cases = _load_corpus(corpus_path)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+
+    # Emit-only mode: draw the human spot-check manifest (no grading, no model calls).
+    if args.emit_sample is not None:
+        manifest = sample_calibration_manifest(cases, n=args.emit_sample)
+        (out / "calibration_sample.jsonl").write_text(
+            "\n".join(json.dumps(m, ensure_ascii=False) for m in manifest) + "\n")
+        print(f"[calibration sample] {len(manifest)} cases → {out}/calibration_sample.jsonl "
+              f"(excluded {', '.join(RETRACTION_MISLABELS)}); a human fills `substantive_grade` "
+              "blind to the agent.")
+        return
+
+    graded = graded_enabled(args.graded)
+    references = load_graded_references(cases, args.graded_reference)
+    res = score(cases, graded=graded, references=references)
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))

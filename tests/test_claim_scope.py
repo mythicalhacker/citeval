@@ -280,6 +280,56 @@ class LexicalFallbackTests(unittest.TestCase):
         self.assertIsNone(frame.organism)
 
 
+class DirectionTests(unittest.TestCase):
+    """ScopeFrame.direction (C4-integration): the asserted effect direction, populated on both
+    the model and lexical paths, each with a verbatim evidence span (WO-C4-integrate)."""
+
+    def test_lexical_increase_decrease_no_change(self):
+        inc = cs.parse_claim_scope_lexical("Resveratrol significantly increased their survival.")
+        self.assertEqual(inc.direction, "increase")
+        self.assertTrue(inc.direction_evidence)
+        dec = cs.parse_claim_scope_lexical("The inhibitor suppressed tumor growth.")
+        self.assertEqual(dec.direction, "decrease")
+        nc = cs.parse_claim_scope_lexical("There was no significant difference between groups.")
+        self.assertEqual(nc.direction, "no_change")
+
+    def test_lexical_negated_direction_not_reversed(self):
+        """A negated directional verb must NOT assert the reversed direction (honesty rule):
+        'did not improve' is not 'increase', 'failed to reduce' is not 'decrease'."""
+        self.assertIsNone(cs.parse_claim_scope_lexical("Drug X did not improve survival.").direction)
+        self.assertIsNone(cs.parse_claim_scope_lexical("Treatment failed to reduce mortality.").direction)
+        # a plain (unnegated) directional claim still resolves
+        self.assertEqual(cs.parse_claim_scope_lexical("Drug X improved survival.").direction, "increase")
+
+    def test_lexical_mixed_direction_is_none(self):
+        """A claim asserting both up and down is ambiguous — lexical leaves direction None
+        rather than guess (honesty rule)."""
+        mixed = cs.parse_claim_scope_lexical("The drug increased X and reduced Y.")
+        self.assertIsNone(mixed.direction)
+        self.assertEqual(mixed.direction_evidence, [])
+
+    def test_model_direction_extracted_and_canonicalized(self):
+        client = FakeClient(_reply(
+            organism="Mice", organism_evidence=["in mice"], organism_provenance="text-grounded",
+            direction="increase", direction_evidence=["increased their survival"], tier="high",
+        ))
+        frame = cs.parse_claim_scope_model("Resveratrol increased their survival in mice.", client=client)
+        self.assertEqual(frame.direction, "increase")
+        self.assertEqual(frame.direction_evidence, ["increased their survival"])
+
+    def test_model_junk_direction_dropped(self):
+        client = FakeClient(_reply(direction="way-up", direction_evidence=["increased their survival"]))
+        frame = cs.parse_claim_scope_model("Resveratrol increased their survival.", client=client)
+        self.assertIsNone(frame.direction)
+
+    def test_model_direction_requires_verbatim_span(self):
+        """A direction with no surviving verbatim span on the claim side is ungrounded → dropped."""
+        client = FakeClient(_reply(direction="increase", direction_evidence=["boosted lifespan"]))
+        frame = cs.parse_claim_scope_model("Resveratrol increased their survival.", client=client)
+        self.assertIsNone(frame.direction)
+        self.assertEqual(frame.direction_evidence, [])
+
+
 class DispatchTests(unittest.TestCase):
     def test_uses_lexical_when_key_absent(self):
         import os

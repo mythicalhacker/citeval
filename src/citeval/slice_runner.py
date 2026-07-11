@@ -1,16 +1,24 @@
-"""Thin vertical slice runner — wires C1 -> C2 -> C3-lite -> C4-stub -> C5.
+"""Thin vertical slice runner — wires C1 -> C2 -> C3 -> C4 -> C5.
 
 Usage:
     python -m citeval.slice_runner --pmid 22088800 --claim "..."
     python -m citeval.slice_runner --case B01
     python -m citeval.slice_runner --demo          # A01,B01,C01 + built-in verification
+    python -m citeval.slice_runner --demo --graded # graded adversarial C4 (needs ANTHROPIC_API_KEY)
+
+C4 runs as the offline **stub** by default. The graded adversarial adjudicator is swapped in
+behind a flag (`--graded` or `CITEVAL_GRADED=1`); it is the only place the two adjudicators
+differ, and the graded path requires a live Opus 4.8 key. Default OFF keeps the slice/scorer
+offline-green with no key.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
+from .adjudicator import adjudicate
 from .adjudicator_stub import adjudicate_stub
 from .claim_scope import parse_claim_scope
 from .contracts import CitedIdentifier, ClaimUnit
@@ -22,8 +30,21 @@ EVAL_PATH = WORKSPACE / "data" / "eval" / "eval_set.json"
 DEFAULT_OUT = WORKSPACE / "outputs" / "slice_output"
 
 
+_FALSEY = ("", "0", "false", "no", "off", "none")
+
+
+def graded_enabled(flag: bool = False) -> bool:
+    """Graded C4 is on when `--graded` is passed OR `CITEVAL_GRADED` is set truthy.
+
+    Fails CLOSED (case-insensitively): unset or any common off-spelling
+    (0/false/no/off/none) stays on the offline stub path. The graded path constructs a live
+    Opus 4.8 client, so an intent-to-disable value must not silently enable it."""
+    return bool(flag) or os.environ.get("CITEVAL_GRADED", "").strip().lower() not in _FALSEY
+
+
 def run_slice(claim_text: str, cited_pmid: str | None = None,
-              cited_doi: str | None = None) -> dict:
+              cited_doi: str | None = None, *, graded: bool = False,
+              client=None, config=None) -> dict:
     if cited_pmid:
         ident = CitedIdentifier("pmid", str(cited_pmid))
     elif cited_doi:
@@ -34,10 +55,13 @@ def run_slice(claim_text: str, cited_pmid: str | None = None,
     unit = ClaimUnit(atomic_claim=claim_text, cited_identifier=ident)
     # C2: real grounding
     g = ground(unit.cited_identifier)
-    # C3-lite: claim scope hint
+    # C3: claim scope hint (populates direction on both paths)
     scope = parse_claim_scope(unit.atomic_claim)
-    # C4-stub: adjudicate
-    v = adjudicate_stub(g, scope, claim_text=claim_text)
+    # C4: adjudicate — graded adversarial pipeline behind a flag, else the offline stub.
+    if graded:
+        v = adjudicate(g, scope, claim_text=claim_text, client=client, config=config)
+    else:
+        v = adjudicate_stub(g, scope, claim_text=claim_text)
     # C5: report
     return {"unit": unit, "grounded": g, "scope": scope, "verdict": v,
             "report_md": render_markdown(unit, g, scope, v),
@@ -83,18 +107,22 @@ def main() -> None:
     ap.add_argument("--claim")
     ap.add_argument("--case", help="eval_set.json case_id (e.g. A01)")
     ap.add_argument("--demo", action="store_true", help="run A01,B01,C01 with verification")
+    ap.add_argument("--graded", action="store_true",
+                    help="use the graded adversarial C4 (needs ANTHROPIC_API_KEY); else the stub")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     args = ap.parse_args()
     out_dir = Path(args.out)
+    graded = graded_enabled(args.graded)
 
     if args.demo:
         cases = _load_cases()
+        print(f"C4: {'graded (Opus 4.8)' if graded else 'stub (offline)'}")
         print(f"{'case':5} {'gt':14} {'orgs(H?)':9} {'overall':46} verify")
         print("-" * 104)
         all_ok = True
         for cid in ["A01", "B01", "C01"]:
             c = cases[cid]
-            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"])
+            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=graded)
             _write(out_dir, cid, r)
             g = r["grounded"]
             # grounding sanity: all three cases carry organism MeSH; empty means a
@@ -119,7 +147,7 @@ def main() -> None:
         claim, pmid = args.claim, args.pmid
     if not claim or not (pmid or args.doi):
         ap.error("provide --case, or --claim with --pmid/--doi, or --demo")
-    r = run_slice(claim, cited_pmid=pmid, cited_doi=args.doi)
+    r = run_slice(claim, cited_pmid=pmid, cited_doi=args.doi, graded=graded)
     path = _write(out_dir, (args.case or pmid), r)
     print(r["report_md"])
     print(f"\n[written to {path}]")
