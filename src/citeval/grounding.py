@@ -28,6 +28,7 @@ NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _DATA_DIR = Path(__file__).resolve().parent / "data"
 _CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 _MESH_CACHE = _CACHE_DIR / "mesh_tree.json"
+_EFETCH_DIR = _CACHE_DIR / "efetch_pubmed"   # cached raw efetch db=pubmed XML (rerun/scale speed)
 
 _EMAIL = os.environ.get("NCBI_EMAIL", "citeval@example.org")
 _TOOL = os.environ.get("NCBI_TOOL", "citeval")
@@ -58,6 +59,18 @@ def _eutils(endpoint: str, **params) -> bytes:
     if _API_KEY:
         params.setdefault("api_key", _API_KEY)
     return _get(f"{NCBI_BASE}/{endpoint}?{urllib.parse.urlencode(params)}")
+
+
+def _efetch_pubmed_cached(pmid: str) -> bytes:
+    """Raw efetch db=pubmed XML, disk-cached by PMID so re-scoring a corpus is fast.
+    Same bytes as a live fetch — additive caching, no behavior change."""
+    _EFETCH_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _EFETCH_DIR / f"{pmid}.xml"
+    if fp.exists():
+        return fp.read_bytes()
+    data = _eutils("efetch.fcgi", db="pubmed", id=pmid, retmode="xml")
+    fp.write_bytes(data)
+    return data
 
 
 # ---------------------------------------------------------------------- MeSH tree
@@ -241,7 +254,7 @@ def ground(identifier: CitedIdentifier) -> GroundedRecord:
     """Resolve + ground a cited paper into a fully metadata-grounded record."""
     errors: list[str] = []
     pmid = _resolve_to_pmid(identifier)
-    parsed = _parse_pubmed_xml(_eutils("efetch.fcgi", db="pubmed", id=pmid, retmode="xml"))
+    parsed = _parse_pubmed_xml(_efetch_pubmed_cached(pmid))
 
     _prefetch_trees([m["ui"] for m in parsed["mesh"]])   # one batched db=mesh call
     organism, population, sex = [], [], []

@@ -1,0 +1,7 @@
+stratum,n_sources,n_journals,target_cases,note
+A (RETRACTED),70,56,20-30,"8 reason buckets, ≤2/journal, 2010-2020 window + pilot"
+B-species (SCOPE_MISMATCH),35,23,20-30,"animal-only by MeSH tree B*, no Humans"
+B-pop adult-only bait,26,25,(part of ≥10),"Adult/Aged/MiddleAged, no Infant/Child"
+B-pop pediatric-only bait,15,13,(part of ≥10),"Infant/Child, no Adult"
+C-hard control,25,16,≥10,Humans + animal tag both present (bait FP)
+C-easy control,30,29,~15,"Humans + population tags, clean"
