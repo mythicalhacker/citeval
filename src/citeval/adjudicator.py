@@ -82,8 +82,10 @@ CONFIDENCE_HIGH_AGREEMENT = 0.8      # tier=high seed (data-derived by RB3; NOT 
 CONFIDENCE_MEDIUM_AGREEMENT = 0.6    # tier=medium floor seed
 ADVOCATE_TEMPERATURE = 0.9           # warm advocates diversify spans (RB2/RB3 0.7–1.0)
 CRITIC_TEMPERATURE = 0.2             # cool critic for a stable verdict (RB2 §4)
-MAX_TOKENS_ADVOCATE = 900
-MAX_TOKENS_CRITIC = 500
+MAX_TOKENS_ADVOCATE = 1200   # was 900: advocates now quote from budgeted full text — don't truncate mid-quote
+MAX_TOKENS_CRITIC = 1500     # was 500: the evidence-first/grade-last JSON must fit PAST its closing brace.
+                             # At 500 the critic truncated before the trailing `grade`, so _parse_json→None
+                             # dropped ~20/21 rounds and full-text coverage collapsed to 0 (WO-C4 fix).
 
 _WS = re.compile(r"\s+")
 
@@ -351,6 +353,13 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
                                     objective_facts, GRADE_VALUES, direction, g.full_text)
     critic_round = _call_agent(client, critic.SYSTEM, critic_user,
                                cfg.max_tokens_critic, cfg.critic_temperature)
+    if critic_round is None:
+        # Cheap robustness (WO-C4 fix): a lone truncated/garbled critic response parses to None and
+        # would silently drop the whole round. Resample the critic ONCE at the same settings before
+        # counting it invalid — a transient truncation usually clears on the retry. At most one retry
+        # per round; early-stopping is untouched (it reads the resulting rounds back in the caller).
+        critic_round = _call_agent(client, critic.SYSTEM, critic_user,
+                                   cfg.max_tokens_critic, cfg.critic_temperature)
     return _TriadSample(critic_round, sup_points, ref_grade_points, ref_rollup_points,
                         sup_discarded, ref_discarded)
 
@@ -362,7 +371,7 @@ def _unanimous_ordinal(rounds: Sequence[Optional[dict]]) -> bool:
         if not isinstance(r, dict):
             return False
         g = r.get("grade")
-        if g not in ORDINAL_INDEX:
+        if not isinstance(g, str) or g not in ORDINAL_INDEX:   # non-str/unhashable grade ⇒ not unanimous (no hash crash)
             return False
         seen.add(g)
     return len(seen) == 1 and len(rounds) > 0
@@ -381,7 +390,8 @@ class _Aggregate:
     n_valid: int                         # # ordinal rounds
     n_nei: int                           # # NOT_ENOUGH_INFO rounds
     n_na: int                            # # N/A — non-substantiating rounds
-    n_parsed: int                        # # rounds with any recognized grade
+    n_parsed: int                        # # rounds with ANY recognized grade (ordinal | NEI | N/A)
+    n_parse_failed: int                  # # rounds the model answered but we could NOT parse a grade from
     non_adjacent_multimodal: bool
     ordinal_distribution: dict[str, int]
     rationale: str
@@ -392,12 +402,16 @@ def _aggregate_rounds(rounds: Sequence[Optional[dict]], cfg: AdjudicationConfig)
     indices: list[int] = []
     confidences: list[float] = []          # numeric confidence per ordinal round (aligned to indices)
     rationale_by_grade: dict[str, str] = {}
-    n_nei = n_na = n_parsed = 0
+    n_nei = n_na = n_parsed = n_parse_failed = 0
     for r in rounds:
         if not isinstance(r, dict):
+            n_parse_failed += 1   # None: truncated/invalid JSON (the 500-token cap bug) — COUNTED, not dropped
             continue
         gr = r.get("grade")
-        if gr in ORDINAL_INDEX:
+        # `gr` is an arbitrary parsed-JSON value; guard the hash-based membership test so an
+        # UNHASHABLE grade ({"grade": []} / {"grade": {}}) falls through to the parse-failed `else`
+        # instead of raising TypeError and aborting the whole case (mirrors scorer.py's str guard).
+        if isinstance(gr, str) and gr in ORDINAL_INDEX:
             n_parsed += 1
             indices.append(ORDINAL_INDEX[gr])
             conf = _num_conf(r)
@@ -409,10 +423,13 @@ def _aggregate_rounds(rounds: Sequence[Optional[dict]], cfg: AdjudicationConfig)
         elif gr == NON_SUBSTANTIATING:
             n_parsed += 1
             n_na += 1
+        else:
+            n_parse_failed += 1   # answered but no recognized grade (missing/garbled grade field)
 
     n_valid = len(indices)
     if n_valid == 0:
-        return _Aggregate(None, None, 0.0, 0.0, 0.0, 0, n_nei, n_na, n_parsed, False, {}, "")
+        return _Aggregate(None, None, 0.0, 0.0, 0.0, 0, n_nei, n_na, n_parsed, n_parse_failed,
+                          False, {}, "")
 
     counts = Counter(indices)
     present = sorted(counts)
@@ -429,7 +446,7 @@ def _aggregate_rounds(rounds: Sequence[Optional[dict]], cfg: AdjudicationConfig)
     non_adjacent_multimodal = a_adj < cfg.adjacent_floor
     distribution = {ORDINAL_GRADES[i]: c for i, c in sorted(counts.items())}
     return _Aggregate(grade, g_index, a_exact, a_adj, conf_hybrid, n_valid, n_nei, n_na,
-                      n_parsed, non_adjacent_multimodal, distribution,
+                      n_parsed, n_parse_failed, non_adjacent_multimodal, distribution,
                       rationale_by_grade.get(grade, ""))
 
 
@@ -606,6 +623,7 @@ def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
                              "ordinal_distribution": agg.ordinal_distribution,
                              "n_nei": agg.n_nei,
                              "n_non_substantiating": agg.n_na,
+                             "n_parse_failed": agg.n_parse_failed,   # truncated/garbled rounds — VISIBLE, not a silent NEI
                              "grade_ordinal": agg.grade_index,
                              "tau_abstain": cfg.tau_abstain,
                              "adjacent_floor": cfg.adjacent_floor},
@@ -715,6 +733,10 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         f"Self-consistency: {rounds_run} full-triad round(s) run; exact agreement "
         f"{agg.a_exact:.2f}, adjacent agreement {agg.a_adj:.2f} over {agg.n_valid} valid round(s).",
     ]
+    if agg.n_parse_failed:
+        notes.append(f"{agg.n_parse_failed} of {rounds_run} critic round(s) returned "
+                     "unparseable/truncated JSON (no grade extracted, resampled once) — counted as "
+                     "parse failures, NOT abstentions; raise max_tokens_critic if this recurs.")
     if ref_rollup_points:
         notes.append(f"Refuter noted {len(ref_rollup_points)} scope over-generalization point(s) — "
                      "routed to `overall`, never the substantive grade.")

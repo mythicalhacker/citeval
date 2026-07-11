@@ -213,10 +213,62 @@ class ReadPredictionsTests(unittest.TestCase):
             self.assertEqual(set(done), {"A"})               # partial line skipped, A survives
 
 
+class RoundLabelTests(unittest.TestCase):
+    """The -v per-round label must distinguish a parse failure (truncated/garbled JSON) from a
+    genuine abstention and a real grade (WO-C4 fix — a truncation regression must be legible)."""
+
+    def test_round_grade_label_distinguishes_unparsed_nei_graded(self):
+        self.assertEqual(S._round_grade_label(None), "UNPARSED")             # None: didn't parse (truncated)
+        self.assertEqual(S._round_grade_label({"reasoning": "x"}), "UNPARSED")  # parsed, no grade field
+        self.assertEqual(S._round_grade_label({"grade": "not-a-grade"}), "UNPARSED")  # garbled grade
+        self.assertEqual(S._round_grade_label({"grade": NOT_ENOUGH_INFO}), "NEI")     # genuine abstention
+        self.assertEqual(S._round_grade_label({"grade": NON_SUBSTANTIATING}), "N/A")  # Trap 2
+        self.assertEqual(S._round_grade_label({"grade": "partially-supported"}), "partially-supported")
+        self.assertEqual(S._round_grade_label({"grade": []}), "UNPARSED")   # unhashable grade must not TypeError
+
+
+class _ValidGradeClient:
+    """Minimal model client (no network): supporter quotes a real span, refuter is empty, and the
+    critic ALWAYS returns a well-formed graded JSON object — the healthy path a 500-token truncation
+    used to destroy. Used to prove valid critic JSON flows through the REAL adjudicator to coverage>0."""
+
+    def complete(self, *, model, system, user, max_tokens, temperature=1.0):
+        if system.startswith("You are the SUPPORTER"):
+            return json.dumps({"points": [{"quote": "a", "rationale": "supports"}]})  # "a" == abstract
+        if system.startswith("You are the REFUTER"):
+            return json.dumps({"points": []})
+        return json.dumps({"reasoning": "clear", "decisive_spans": ["a"],
+                           "grade": "partially-supported", "confidence": 0.8,
+                           "grade_rationale_last": "graded from the exchange"})
+
+
 class ObservabilityTests(unittest.TestCase):
     def _cases(self, n):
         return [{"case_id": f"K{i}", "cited_pmid": str(i), "claim_text": "c",
                  "ground_truth_label": "SUPPORTED"} for i in range(n)]
+
+    def test_valid_critic_json_yields_positive_coverage_end_to_end(self):
+        """WO-C4 fix acceptance: valid graded critic JSON flows through the REAL adjudicator to a
+        GRADED verdict, and the scorer reports coverage > 0 on the full-text branch (the truncation
+        bug collapsed full-text coverage to 0). Real adjudicate + a mock Opus, no network."""
+        from citeval import adjudicator as A
+        from citeval.contracts import ScopeFrame
+
+        def _real_slice(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None,
+                        config=None):
+            g = _fake_grounded(cited_pmid, full_text="Results: a clear body finding.")
+            v = A.adjudicate(
+                g, ScopeFrame(organism="Humans", provenance="model-inferred"),
+                claim_text=claim_text, client=_ValidGradeClient(),
+                config=A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                            adaptive_early_stopping=False))
+            return {"verdict": v, "grounded": g}
+
+        cases = self._cases(2)
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run_slice", _real_slice):
+            res = S.score(cases, graded=True, out_dir=d)
+        self.assertEqual(res["coverage_by_depth"]["fulltext"]["graded"], 2)
+        self.assertGreater(res["coverage_by_depth"]["fulltext"]["coverage"], 0.0)   # not collapsed to 0
 
     def test_limit_scores_only_first_n(self):
         cases = self._cases(6)

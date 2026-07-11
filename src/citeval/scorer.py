@@ -446,11 +446,27 @@ def _finish_line(i: int, n: int, rec: dict, graded_so_far: int) -> str:
             f"a_exact={a_exact} elapsed={el}s (graded {graded_so_far}/{i})")
 
 
+def _round_grade_label(critic_round) -> str:
+    """Legible per-round outcome for the -v line (WO-C4 fix): distinguish a round that FAILED TO
+    PARSE (truncated/invalid JSON, or a parsed object with a missing/garbled grade) — shown as
+    UNPARSED — from a genuine abstention (NEI) and a non-substantiating verdict (N/A), so a future
+    truncation regression is legible at a glance instead of hiding behind a clean ABSTAIN."""
+    if not isinstance(critic_round, dict):
+        return "UNPARSED"                         # None: the model reply didn't parse (truncation)
+    g = critic_round.get("grade")
+    if isinstance(g, str) and g in ORDINAL_INDEX:  # str-guard: an unhashable grade must not TypeError
+        return g                                  # a real ordinal grade
+    if g == NOT_ENOUGH_INFO:
+        return "NEI"                              # genuine abstention (recognized, not a parse failure)
+    if g == NON_SUBSTANTIATING:
+        return "N/A"                              # Trap 2 non-substantiating (recognized)
+    return "UNPARSED"                             # parsed object but no recognized grade field
+
+
 def _round_hook(i: int, n: int, cid: str):
     """Per-round progress callback (verbose): shows a case is alive within seconds of each round."""
     def _hook(round_no: int, critic_round) -> None:
-        grade = critic_round.get("grade") if isinstance(critic_round, dict) else None
-        _log(f"[{i}/{n}] {cid}   · round {round_no} grade={grade or '—'}")
+        _log(f"[{i}/{n}] {cid}   · round {round_no} grade={_round_grade_label(critic_round)}")
     return _hook
 
 
