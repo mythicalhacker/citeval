@@ -99,10 +99,12 @@ class AnthropicModelClient:
 
     def complete(self, *, model: str, system: str, user: str, max_tokens: int,
                  temperature: float = 1.0) -> str:
+        # claude-opus-4-8 deprecated temperature; the advocate/critic temperature config is
+        # retained on the interface but not sent — self-consistency variance now comes from
+        # default-temperature sampling.
         msg = self._client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            temperature=temperature,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
