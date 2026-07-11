@@ -30,6 +30,7 @@ import json
 import math
 import os
 import random
+import subprocess
 import sys
 import time
 from dataclasses import replace
@@ -47,6 +48,38 @@ CORPUS_OBJECTIVE = WORKSPACE / "corpus" / "corpus_objective.jsonl"
 # but are labelled SCOPE_MISMATCH — they belong to the retraction axis, not a clean substantive
 # grade, so they are excluded from the calibration sample (WO-C4-integrate post-corpus update).
 RETRACTION_MISLABELS = ("Bs14", "Bp02", "Bp03")
+
+
+# ==================================================================================
+# Version stamp (WO-C4 §4 stale-binary guard): which code produced this scorecard / prediction.
+# ==================================================================================
+def _git(*args: str) -> str:
+    """Run `git <args>` at the repo root; '' on any failure. cwd is pinned to WORKSPACE so the
+    stamp is stable regardless of where python was launched from (e.g. `cd src`)."""
+    return subprocess.run(["git", *args], cwd=WORKSPACE, capture_output=True, text=True,
+                          timeout=5).stdout.strip()
+
+
+def code_version() -> str:
+    """Short git SHA plus a `+dirty` flag when the working tree has uncommitted changes; 'unknown'
+    if git is unavailable or this is not a repo. Stamped into the scorecard header and every
+    graded_predictions.jsonl line so a run is always traceable to the exact code that produced it —
+    no more 'is this scorecard from the fixed binary or the old one?' ambiguity."""
+    try:
+        sha = _git("rev-parse", "--short", "HEAD")
+        if not sha:
+            return "unknown"
+        return sha + ("+dirty" if _git("status", "--porcelain") else "")
+    except Exception:
+        return "unknown"
+
+
+def git_branch() -> str:
+    """Current branch name (for the `[version]` stderr line); 'unknown' if unresolvable."""
+    try:
+        return _git("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def _axis(v, axis):
@@ -464,20 +497,29 @@ def _round_grade_label(critic_round) -> str:
 
 
 def _round_hook(i: int, n: int, cid: str):
-    """Per-round progress callback (verbose): shows a case is alive within seconds of each round."""
-    def _hook(round_no: int, critic_round) -> None:
-        _log(f"[{i}/{n}] {cid}   · round {round_no} grade={_round_grade_label(critic_round)}")
+    """Per-round progress callback (verbose): shows a case is alive within seconds of each round,
+    and surfaces the critic's `usage.output_tokens` as `out_tok=NNN` so the real output-length
+    distribution is readable live — the input to setting the production cap from data (WO-C4 §3)."""
+    def _hook(round_no: int, critic_round, out_tok=None) -> None:
+        tok = f" out_tok={out_tok}" if isinstance(out_tok, int) else ""
+        _log(f"[{i}/{n}] {cid}   · round {round_no} grade={_round_grade_label(critic_round)}{tok}")
     return _hook
 
 
 def score(cases: list[dict], graded: bool = False, references: dict | None = None, *,
           out_dir: str | Path | None = None, limit: int | None = None, fresh: bool = False,
-          progress: bool = False, verbose: bool = False, client=None, config=None) -> dict:
+          progress: bool = False, verbose: bool = False, client=None, config=None,
+          version: str = "") -> dict:
     """Score the corpus. When `graded`, per-case predictions are appended INCREMENTALLY to
     `<out_dir>/graded_predictions.jsonl` (flushed) so a Ctrl-C never loses completed cases; on the
     next run those case_ids are SKIPPED (resume) unless `fresh`. `limit` scores only the first N
     cases (smoke test). `progress`/`verbose` stream stderr progress. `client`/`config` are threaded
-    to the graded adjudicator (mock injection for offline tests)."""
+    to the graded adjudicator (mock injection for offline tests). `version` is the code stamp
+    written into every prediction row + the scorecard header (WO-C4 §4).
+
+    Per-case failure isolation (WO-C4 §2): a grounding/network error on ONE case is caught, logged,
+    recorded as a status=ERROR prediction row (excluded from every metric denominator — an infra
+    error is not an abstention), and the run CONTINUES. A single bad PMID never aborts a long run."""
     references = references or {}
     if limit is not None:
         cases = cases[:limit]
@@ -505,17 +547,22 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
             if needs_nl:
                 pred_f.write("\n")
                 pred_f.flush()
-        if done:
-            _log(f"[resume] {len(done)} completed case(s) found in {pred_path.name} — skipping "
+        # Only NON-error rows count as "completed": a stored status=ERROR row is a prior infra
+        # failure, not finished work, so it is RETRIED (not skipped) on this run.
+        done_ok = {k: v for k, v in done.items() if v.get("status") != "ERROR"}
+        if done_ok:
+            _log(f"[resume] {len(done_ok)} completed case(s) found in {pred_path.name} — skipping "
                  "them (pass --fresh to recompute)")
 
     rows = []
     graded_records = []
+    errors: list[dict] = []
     graded_so_far = 0
     try:
         for i, c in enumerate(cases, 1):
             cid = c.get("case_id", c["cited_pmid"])
-            resumed = graded and cid in done
+            prior = done.get(cid) if graded else None
+            resumed = bool(prior) and prior.get("status") != "ERROR"
             use_graded = graded and not resumed
             if progress:
                 _log(f"[{i}/{n}] {cid} start" + (" (resumed — reuse stored prediction)" if resumed else ""))
@@ -523,8 +570,29 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
             if use_graded and verbose:
                 case_config = replace(config or AdjudicationConfig(), on_round=_round_hook(i, n, cid))
             t0 = time.perf_counter()
-            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=use_graded,
-                          client=client, config=case_config)
+            try:
+                r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=use_graded,
+                              client=client, config=case_config)
+            except Exception as e:            # noqa: BLE001 — one bad PMID must not abort the run
+                err = f"{type(e).__name__}: {e}"
+                # A resumed case already holds a good graded prediction; a transient failure on its
+                # cheap objective RE-run must not discard that work (nor trigger a costly re-grade),
+                # so reuse the stored prediction rather than recording an ERROR.
+                if resumed:
+                    rec = {**prior, "ref_grade": references.get(cid, prior.get("ref_grade"))}
+                    graded_records.append(rec)
+                    if rec.get("status") == "GRADED":
+                        graded_so_far += 1
+                    _log(f"[{i}/{n}] {cid} objective re-run failed ({err}) — reusing stored prediction")
+                    continue
+                _log(f"[{i}/{n}] {cid} ERROR: {err} — recorded + excluded from metrics (retried next run)")
+                err_rec = {"case_id": cid, "status": "ERROR", "error": err, "code_version": version,
+                           "elapsed_s": round(time.perf_counter() - t0, 2)}
+                if pred_f is not None:
+                    pred_f.write(json.dumps(err_rec, ensure_ascii=False) + "\n")
+                    pred_f.flush()            # durable so `tail -f` / the next run sees the failure
+                errors.append(err_rec)
+                continue
             v = r["verdict"]
             pred = _pred(v)
             rows.append({
@@ -538,13 +606,17 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
             if graded:
                 if resumed:
                     # Re-attach the current reference (a sidecar may have been supplied since).
-                    rec = {**done[cid], "ref_grade": references.get(cid, done[cid].get("ref_grade"))}
+                    rec = {**prior, "ref_grade": references.get(cid, prior.get("ref_grade"))}
                 else:
                     gp = _graded_pred(v)
                     depth = "fulltext" if r["grounded"].full_text else "abstract"
+                    sub_ev = _axis(v, "substantive_support").evidence or {}
+                    out_toks = (sub_ev.get("self_consistency") or {}).get("output_tokens")
                     rec = {"case_id": cid, "status": gp["status"], "grade": gp["grade"],
                            "confidence": gp["confidence"], "ref_grade": references.get(cid),
-                           "evidence_depth": depth, "elapsed_s": round(time.perf_counter() - t0, 2)}
+                           "evidence_depth": depth, "output_tokens": out_toks,
+                           "code_version": version,
+                           "elapsed_s": round(time.perf_counter() - t0, 2)}
                     if pred_f is not None:
                         pred_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
                         pred_f.flush()     # a crash after this line never loses this case
@@ -597,6 +669,9 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
         "control_specificity": (clean, len(controls)),
         "overall_accuracy": (n_correct, len(rows)),
         "a_scope_observational": a_scope_fp,
+        "code_version": version,
+        "errors": errors,               # infra failures (grounding/network) — excluded from all metrics
+        "n_errors": len(errors),
     }
     if graded:
         res["calibration"] = calibrate_graded(graded_records)
@@ -688,8 +763,10 @@ def render_scorecard(res: dict) -> str:
         graded_line = "**pending reference labels** (graded predictions produced; no human reference yet)"
     else:
         graded_line = f"**SCORED** (coverage {cal.get('coverage', 0):.2f}, see calibration block below)"
+    ver = res.get("code_version") or ""
+    ver_line = f"Code version: `{ver}`. " if ver else ""
     L = ["# Scorecard — objective axes + graded calibration (measured)", "",
-         f"Corpus: {res['n']} cases. Pipeline: C2 grounding (real) + C3 scope "
+         f"{ver_line}Corpus: {res['n']} cases. Pipeline: C2 grounding (real) + C3 scope "
          f"+ {c4_label}. Graded substantive axis: {graded_line}.", "",
          "## Per-axis metrics", "",
          "| Axis | Precision | Recall | Specificity | TP/FP/FN/TN |",
@@ -701,6 +778,10 @@ def render_scorecard(res: dict) -> str:
          "",
          f"- **Control specificity** (SUPPORTED cases clean on both axes): {clean}/{nctrl}",
          f"- **Overall correct finding**: {ncorr}/{ntot}",
+         f"- **Errors**: {res.get('n_errors', 0)}"
+         + (f" (grounding/network — excluded from all metrics, will retry next run: "
+            f"{', '.join(e['case_id'] for e in res.get('errors', []))})"
+            if res.get("n_errors") else " (no grounding/network failures)"),
          f"- **Graded-axis calibration**: {graded_line}", ""]
     if res["scope"]["missed"]:
         L += [f"- **Scope misses (C3-lite limitation, motivates Opus C3 / WO-C3):** "
@@ -747,6 +828,11 @@ def main() -> None:
     ap.add_argument("--out", default=str(OUT_DIR))
     args = ap.parse_args()
 
+    # Stale-binary guard (WO-C4 §4): the very FIRST stderr line names the exact code producing this
+    # run, so a scorecard is never mistaken for the output of a different/older binary.
+    version = code_version()
+    _log(f"[version] {version} {git_branch()}")
+
     corpus_path = Path(args.corpus) if args.corpus else EVAL_PATH
     cases = _load_corpus(corpus_path)
     out = Path(args.out)
@@ -766,7 +852,7 @@ def main() -> None:
     references = load_graded_references(cases, args.graded_reference)
     verbose = args.verbose or os.environ.get("CITEVAL_PROGRESS", "").strip().lower() not in ("", "0", "false", "no", "off", "none")
     res = score(cases, graded=graded, references=references, out_dir=out, limit=args.limit,
-                fresh=args.fresh, progress=graded, verbose=verbose)
+                fresh=args.fresh, progress=graded, verbose=verbose, version=version)
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))

@@ -10,10 +10,13 @@ MCP server behind ground().
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import re
+import socket
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -68,10 +71,36 @@ def _throttle() -> None:
     _last_call[0] = time.time()
 
 
-def _get(url: str, timeout: int = 30) -> bytes:
-    _throttle()
+# A single NCBI blip must not abort a long corpus run (WO-C4 resilience §1). EFetch/id-converter
+# fetches occasionally fail transiently — a truncated read (http.client.IncompleteRead), a dropped
+# or timed-out connection (urllib.error.URLError / socket.timeout / ConnectionError), or a transient
+# server/rate-limit HTTP status. `_get` retries those with exponential backoff (1s, 2s, 4s), and
+# re-raises only after the final attempt. A non-transient HTTP status (e.g. 404) fails FAST — a
+# retry cannot fix it. Because `_get` backs `_eutils`, this covers EFetch pubmed, EFetch pmc, and
+# the PMC id-converter (`_resolve_pmcid`) uniformly.
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503})
+_FETCH_ATTEMPTS = 4
+_BACKOFF_BASE_S = 1.0
+
+
+def _get(url: str, timeout: int = 30, *, attempts: int = _FETCH_ATTEMPTS,
+         backoff_base: float = _BACKOFF_BASE_S) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": f"{_TOOL} (mailto:{_EMAIL})"})
-    return urllib.request.urlopen(req, timeout=timeout).read()
+    last_exc: Exception = RuntimeError("no fetch attempt made")   # replaced on first failure
+    for attempt in range(attempts):
+        _throttle()
+        try:
+            return urllib.request.urlopen(req, timeout=timeout).read()
+        except urllib.error.HTTPError as e:
+            if e.code not in _RETRYABLE_STATUS:
+                raise                       # 4xx (e.g. 404) — not transient, do not retry
+            last_exc = e
+        except (urllib.error.URLError, socket.timeout, http.client.IncompleteRead,
+                ConnectionError) as e:
+            last_exc = e                    # dropped / incomplete / timed-out read — retry
+        if attempt + 1 < attempts:
+            time.sleep(backoff_base * (2 ** attempt))   # 1s, 2s, 4s
+    raise last_exc                          # every attempt failed transiently — surface the last
 
 
 def _eutils(endpoint: str, **params) -> bytes:

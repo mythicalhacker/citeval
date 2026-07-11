@@ -7,9 +7,11 @@ pure functions exercised on hand-built JATS XML. Run:
 """
 from __future__ import annotations
 
+import http.client
 import pathlib
 import sys
 import unittest
+import urllib.error
 import xml.etree.ElementTree as ET
 from unittest import mock
 
@@ -128,6 +130,88 @@ class FetchFullTextTests(unittest.TestCase):
             ft, prov = G.fetch_full_text("444", "ABS.", errors)
         self.assertEqual((ft, prov), ("", ""))
         self.assertTrue(any("full_text parse failed" in e for e in errors))
+
+
+class _Resp:
+    """Minimal urlopen() return whose .read() yields the body (no network)."""
+    def __init__(self, body: bytes = b"OK"):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+
+class GetRetryTests(unittest.TestCase):
+    """WO-C4 resilience §1: `_get` must survive a transient NCBI blip (IncompleteRead / dropped
+    connection / 429 / 5xx) by retrying with backoff — one blip must not abort a long run — while a
+    non-transient status (404) fails fast. `_throttle` is stubbed out and backoff_base=0 so no real
+    time is spent; `urllib.request.urlopen` is injected."""
+
+    def _run(self, urlopen_fn, **kw):
+        with mock.patch.object(G, "_throttle", lambda: None), \
+                mock.patch.object(G.urllib.request, "urlopen", urlopen_fn):
+            return G._get("http://ncbi.example/efetch", backoff_base=0, **kw)
+
+    def test_retries_then_succeeds_on_incomplete_read(self):
+        """The exact crash reported on case 3: http.client.IncompleteRead during EFetch — retried."""
+        calls = {"n": 0}
+
+        def _flaky(req, timeout=30):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise http.client.IncompleteRead(b"partial")
+            return _Resp(b"OK")
+
+        self.assertEqual(self._run(_flaky), b"OK")
+        self.assertEqual(calls["n"], 2)                     # failed once, retried, recovered
+
+    def test_retries_dropped_connection_and_timeout(self):
+        for exc in (urllib.error.URLError("connection reset"),
+                    TimeoutError("timed out"),               # socket.timeout is TimeoutError in 3.10+
+                    ConnectionResetError("peer reset")):
+            calls = {"n": 0}
+
+            def _flaky(req, timeout=30, _e=exc):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise _e
+                return _Resp(b"OK")
+
+            self.assertEqual(self._run(_flaky), b"OK", f"{type(exc).__name__} should retry")
+            self.assertEqual(calls["n"], 2)
+
+    def test_retries_transient_http_statuses(self):
+        for code in (429, 500, 502, 503):
+            calls = {"n": 0}
+
+            def _flaky(req, timeout=30, _c=code):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise urllib.error.HTTPError("http://x", _c, "transient", {}, None)
+                return _Resp(b"OK")
+
+            self.assertEqual(self._run(_flaky), b"OK", f"HTTP {code} should retry")
+            self.assertEqual(calls["n"], 2)
+
+    def test_reraises_after_exhausting_attempts(self):
+        def _always(req, timeout=30):
+            raise http.client.IncompleteRead(b"")
+
+        with self.assertRaises(http.client.IncompleteRead):
+            self._run(_always, attempts=3)
+
+    def test_fails_fast_on_non_retryable_http_error(self):
+        """A 404 is not transient — retrying wastes time and rate budget, so it raises on attempt 1."""
+        calls = {"n": 0}
+
+        def _404(req, timeout=30):
+            calls["n"] += 1
+            raise urllib.error.HTTPError("http://x", 404, "Not Found", {}, None)
+
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self._run(_404, attempts=4)
+        cm.exception.close()                                # HTTPError is file-like — release it now
+        self.assertEqual(calls["n"], 1)                     # not retried
 
 
 if __name__ == "__main__":

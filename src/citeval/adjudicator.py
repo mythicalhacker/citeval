@@ -83,9 +83,12 @@ CONFIDENCE_MEDIUM_AGREEMENT = 0.6    # tier=medium floor seed
 ADVOCATE_TEMPERATURE = 0.9           # warm advocates diversify spans (RB2/RB3 0.7–1.0)
 CRITIC_TEMPERATURE = 0.2             # cool critic for a stable verdict (RB2 §4)
 MAX_TOKENS_ADVOCATE = 1200   # was 900: advocates now quote from budgeted full text — don't truncate mid-quote
-MAX_TOKENS_CRITIC = 1500     # was 500: the evidence-first/grade-last JSON must fit PAST its closing brace.
-                             # At 500 the critic truncated before the trailing `grade`, so _parse_json→None
-                             # dropped ~20/21 rounds and full-text coverage collapsed to 0 (WO-C4 fix).
+MAX_TOKENS_CRITIC = 4000     # 500→1500→4000: the evidence-first/grade-last JSON must fit PAST its closing
+                             # brace. At 500 the critic truncated before the trailing `grade`, so
+                             # _parse_json→None dropped ~20/21 rounds and full-text coverage collapsed to 0.
+                             # 1500 fixed the collapse; 4000 is a safely non-clipping headroom while we
+                             # capture usage.output_tokens per critic call (WO-C4 §3 cap-from-data) to set
+                             # the production cap above the OBSERVED max, not by guess.
 
 _WS = re.compile(r"\s+")
 
@@ -121,26 +124,40 @@ class AnthropicModelClient:
         import anthropic  # lazy: only touched when a real adjudication actually runs
         self._client = anthropic.Anthropic()
 
-    def complete(self, *, model: str, system: str, user: str, max_tokens: int,
-                 temperature: float = 1.0) -> str:
-        # claude-opus-4-8 deprecated temperature; the advocate/critic temperature config is
-        # retained on the interface but not sent — self-consistency variance now comes from
-        # default-temperature sampling.
-        #
-        # Part C (prompt caching): the user turn is sent as structured content blocks with a
-        # cache_control breakpoint on the large, reused evidence prefix (title/abstract/full_text),
-        # cutting repeat input cost/latency across the case's 21 triad calls. The seam signature is
-        # unchanged (`user` stays a single str), so mock clients keep working untouched.
+    def complete_with_usage(self, *, model: str, system: str, user: str, max_tokens: int,
+                            temperature: float = 1.0) -> tuple[str, Optional[int]]:
+        """One Opus 4.8 turn → (text, output_tokens). `output_tokens` is the SDK-reported
+        `usage.output_tokens` (None if the response carries no usage), captured so the WO-C4 §3
+        cap-from-data pass can read the real critic-output distribution and set the production cap
+        above the observed max instead of guessing.
+
+        claude-opus-4-8 deprecated temperature; the advocate/critic temperature config is retained
+        on the interface but not sent — self-consistency variance now comes from default-temperature
+        sampling.
+
+        Part C (prompt caching): the user turn is sent as structured content blocks with a
+        cache_control breakpoint on the large, reused evidence prefix (title/abstract/full_text),
+        cutting repeat input cost/latency across the case's triad calls. The seam signature keeps
+        `user` a single str, so mock clients keep working untouched."""
         msg = self._client.messages.create(
             model=model,
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": _content_blocks(user)}],
         )
-        return "".join(
+        text = "".join(
             getattr(b, "text", "") for b in msg.content
             if getattr(b, "type", None) == "text"
         )
+        out_tok = getattr(getattr(msg, "usage", None), "output_tokens", None)
+        return text, out_tok
+
+    def complete(self, *, model: str, system: str, user: str, max_tokens: int,
+                 temperature: float = 1.0) -> str:
+        """Back-compat text-only seam (`-> str`), delegating to `complete_with_usage`."""
+        text, _ = self.complete_with_usage(model=model, system=system, user=user,
+                                           max_tokens=max_tokens, temperature=temperature)
+        return text
 
 
 # ==================================================================================
@@ -168,10 +185,11 @@ class AdjudicationConfig:
     adaptive_early_stopping: bool = True   # stop once rounds are unanimous (past the min floor)
     rollup: Optional[Callable[[list[AxisFinding]], str]] = None
     recalibration: Optional[Callable[[float], float]] = None
-    # Optional per-round progress hook (scorer verbose mode): called `on_round(i, critic_round)`
-    # after each triad sample so a slow live case is visibly alive within seconds. Default None
+    # Optional per-round progress hook (scorer verbose mode): called
+    # `on_round(i, critic_round, critic_output_tokens)` after each triad sample so a slow live case
+    # is visibly alive within seconds and the -v line can show out_tok=NNN (WO-C4 §3). Default None
     # (no-op); a raising callback must never crash adjudication, so it is invoked defensively.
-    on_round: Optional[Callable[[int, Optional[dict]], None]] = None
+    on_round: Optional[Callable[[int, Optional[dict], Optional[int]], None]] = None
 
 
 # ==================================================================================
@@ -246,12 +264,25 @@ def _parse_json(text: str) -> Optional[dict]:
     return obj if isinstance(obj, dict) else None
 
 
-def _call_agent(client, system: str, user: str, max_tokens: int,
-                temperature: float) -> Optional[dict]:
-    """One model turn on Opus 4.8, parsed to a dict (None if unparseable)."""
+def _complete(client, system: str, user: str, max_tokens: int,
+              temperature: float) -> tuple[str, Optional[int]]:
+    """Call the client on Opus 4.8 → (text, output_tokens). Prefers `complete_with_usage` (the real
+    client) to capture usage; falls back to a plain `complete()->str` for mock clients that only
+    implement the text seam, in which case output_tokens is None (guard per WO-C4 §3)."""
+    fn = getattr(client, "complete_with_usage", None)
+    if callable(fn):
+        return fn(model=OPUS_MODEL, system=system, user=user,
+                  max_tokens=max_tokens, temperature=temperature)
     text = client.complete(model=OPUS_MODEL, system=system, user=user,
                            max_tokens=max_tokens, temperature=temperature)
-    return _parse_json(text)
+    return text, None
+
+
+def _call_agent(client, system: str, user: str, max_tokens: int,
+                temperature: float) -> tuple[Optional[dict], Optional[int]]:
+    """One model turn on Opus 4.8 → (parsed dict | None, output_tokens | None)."""
+    text, out_tok = _complete(client, system, user, max_tokens, temperature)
+    return _parse_json(text), out_tok
 
 
 def _points(raw: Optional[dict]) -> list[dict]:
@@ -328,21 +359,22 @@ class _TriadSample:
     ref_rollup_points: list[dict]
     sup_discarded: int
     ref_discarded: int
+    critic_out_tok: Optional[int]        # SDK usage.output_tokens for the critic call (cap-from-data)
 
 
 def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[str],
                objective_facts: dict, segments: Sequence[str], sample_idx: int,
                cfg: AdjudicationConfig) -> _TriadSample:
     # Supporter (warm) → verbatim guard. Full text (when present) is fed as extra evidence.
-    sup_raw = _call_agent(client, supporter.SYSTEM,
-                          supporter.build_user(claim_text, g.title, g.abstract, g.full_text),
-                          cfg.max_tokens_advocate, cfg.advocate_temperature)
+    sup_raw, _ = _call_agent(client, supporter.SYSTEM,
+                             supporter.build_user(claim_text, g.title, g.abstract, g.full_text),
+                             cfg.max_tokens_advocate, cfg.advocate_temperature)
     sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
 
     # Refuter (warm) → verbatim guard → routes_to hard-filter (b6).
-    ref_raw = _call_agent(client, refuter.SYSTEM,
-                          refuter.build_user(claim_text, g.title, g.abstract, direction, g.full_text),
-                          cfg.max_tokens_advocate, cfg.advocate_temperature)
+    ref_raw, _ = _call_agent(client, refuter.SYSTEM,
+                             refuter.build_user(claim_text, g.title, g.abstract, direction, g.full_text),
+                             cfg.max_tokens_advocate, cfg.advocate_temperature)
     ref_survivors, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
     ref_grade_points = [p for p in ref_survivors if _routes_to_grade(p)]
     ref_rollup_points = [p for p in ref_survivors if not _routes_to_grade(p)]
@@ -351,17 +383,19 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
     arguments = _blinded_arguments(sup_points, ref_grade_points, sample_idx)
     critic_user = critic.build_user(claim_text, g.title, g.abstract, arguments,
                                     objective_facts, GRADE_VALUES, direction, g.full_text)
-    critic_round = _call_agent(client, critic.SYSTEM, critic_user,
-                               cfg.max_tokens_critic, cfg.critic_temperature)
+    critic_round, critic_out_tok = _call_agent(client, critic.SYSTEM, critic_user,
+                                               cfg.max_tokens_critic, cfg.critic_temperature)
     if critic_round is None:
         # Cheap robustness (WO-C4 fix): a lone truncated/garbled critic response parses to None and
         # would silently drop the whole round. Resample the critic ONCE at the same settings before
         # counting it invalid — a transient truncation usually clears on the retry. At most one retry
         # per round; early-stopping is untouched (it reads the resulting rounds back in the caller).
-        critic_round = _call_agent(client, critic.SYSTEM, critic_user,
-                                   cfg.max_tokens_critic, cfg.critic_temperature)
+        # The retry's own output_tokens replaces the truncated draw's so the captured usage reflects
+        # the response we actually kept.
+        critic_round, critic_out_tok = _call_agent(client, critic.SYSTEM, critic_user,
+                                                   cfg.max_tokens_critic, cfg.critic_temperature)
     return _TriadSample(critic_round, sup_points, ref_grade_points, ref_rollup_points,
-                        sup_discarded, ref_discarded)
+                        sup_discarded, ref_discarded, critic_out_tok)
 
 
 def _unanimous_ordinal(rounds: Sequence[Optional[dict]]) -> bool:
@@ -588,7 +622,8 @@ def _dedupe(points: Sequence[dict], reason_key: str) -> list[dict]:
 def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
                                sup: list[dict], ref_grade: list[dict], ref_rollup: list[dict],
                                sup_discarded: int, ref_discarded: int, rounds_run: int,
-                               cfg: AdjudicationConfig, corpus_label: str) -> AxisFinding:
+                               cfg: AdjudicationConfig, corpus_label: str,
+                               output_tokens: Sequence[Optional[int]]) -> AxisFinding:
     verbalized = tier  # §6 `confidence.verbalized` is the emitted tier (a2 reconciliation)
     # Post-hoc recalibration of the emitted (primary) confidence, if a fitted map is supplied.
     calibration_note = ""
@@ -625,6 +660,7 @@ def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
                              "n_non_substantiating": agg.n_na,
                              "n_parse_failed": agg.n_parse_failed,   # truncated/garbled rounds — VISIBLE, not a silent NEI
                              "grade_ordinal": agg.grade_index,
+                             "output_tokens": list(output_tokens),   # per-round critic usage (WO-C4 §3 cap-from-data)
                              "tau_abstain": cfg.tau_abstain,
                              "adjacent_floor": cfg.adjacent_floor},
     }
@@ -673,6 +709,7 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
 
     # 2. Full-triad self-consistency: N rounds, warm advocates + cool critic, blinded transcripts.
     critic_rounds: list[Optional[dict]] = []
+    critic_out_tokens: list[Optional[int]] = []   # per-round critic usage.output_tokens (cap-from-data)
     sup_all: list[dict] = []
     ref_grade_all: list[dict] = []
     ref_rollup_all: list[dict] = []
@@ -681,6 +718,7 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     for i in range(cfg.self_consistency_rounds):
         sample = _run_triad(client, g, claim_text, direction, objective_facts, segments, i, cfg)
         critic_rounds.append(sample.critic_round)
+        critic_out_tokens.append(sample.critic_out_tok)
         sup_all += sample.sup_points
         ref_grade_all += sample.ref_grade_points
         ref_rollup_all += sample.ref_rollup_points
@@ -689,7 +727,7 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         rounds_run += 1
         if cfg.on_round is not None:      # per-round progress (scorer verbose mode); never fatal
             try:
-                cfg.on_round(rounds_run, sample.critic_round)
+                cfg.on_round(rounds_run, sample.critic_round, sample.critic_out_tok)
             except Exception:             # noqa: BLE001 — a progress hook must not crash grading
                 pass
         # Adaptive early-stopping: stop only once the rounds run are BOTH past the min floor AND
@@ -715,7 +753,8 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     # 4. Substantive finding (§6 evidence keys) + assemble the 4 axes.
     substantive = _build_substantive_finding(
         agg, outcome, tier, sup_points, ref_grade_points, ref_rollup_points,
-        sup_discarded_total, ref_discarded_total, rounds_run, cfg, corpus_label)
+        sup_discarded_total, ref_discarded_total, rounds_run, cfg, corpus_label,
+        critic_out_tokens)
     findings = [retr, spec, popn, substantive]
 
     # 5. Swappable rollup for `overall`.

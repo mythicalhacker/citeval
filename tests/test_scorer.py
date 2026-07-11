@@ -354,5 +354,130 @@ class ObservabilityTests(unittest.TestCase):
             self.assertTrue(all(g for _pmid, g in calls))       # every case re-run graded
 
 
+class FailureIsolationTests(unittest.TestCase):
+    """WO-C4 §2: a grounding/network error on ONE case must be recorded as ERROR, excluded from every
+    metric denominator, and the run must CONTINUE — a single bad PMID never aborts a long run."""
+
+    def _cases(self, n):
+        return [{"case_id": f"K{i}", "cited_pmid": str(i), "claim_text": "c",
+                 "ground_truth_label": "SUPPORTED"} for i in range(n)]
+
+    def test_one_case_error_isolated_recorded_and_run_continues(self):
+        cases = self._cases(3)
+
+        def _slice(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None, config=None):
+            if cited_pmid == "1":
+                raise RuntimeError("IncompleteRead(0 bytes read) during EFetch")   # the case-3 crash
+            return {"verdict": _fake_verdict(cited_pmid, "fully-supported", 0.9, "GRADED"),
+                    "grounded": _fake_grounded(cited_pmid, "body")}
+
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run_slice", _slice):
+            res = S.score(cases, graded=True, out_dir=d, version="deadbee")
+            rows = S.read_predictions(Path(d) / "graded_predictions.jsonl")
+        # the run did NOT abort: K0 and K2 both scored
+        self.assertEqual({r["case_id"] for r in res["graded_records"]}, {"K0", "K2"})
+        # K1 recorded as ERROR, excluded from the graded set + coverage denominator
+        self.assertEqual(res["n_errors"], 1)
+        self.assertEqual(res["errors"][0]["case_id"], "K1")
+        self.assertIn("IncompleteRead", res["errors"][0]["error"])
+        self.assertEqual(res["coverage_by_depth"]["fulltext"]["n"], 2)   # infra error not counted
+        # the ERROR row is durable and carries the message + code version stamp
+        self.assertEqual(rows["K1"]["status"], "ERROR")
+        self.assertEqual(rows["K1"]["code_version"], "deadbee")
+        # scorecard shows the errors line
+        self.assertIn("**Errors**: 1", S.render_scorecard(res))
+
+    def test_errored_case_is_retried_not_resumed_next_run(self):
+        cases = self._cases(1)                             # K0, pmid 0
+        script = {"0": ("fully-supported", 0.9, "GRADED", "body")}
+        with tempfile.TemporaryDirectory() as d:
+            pred = Path(d) / "graded_predictions.jsonl"
+            pred.write_text(json.dumps({"case_id": "K0", "status": "ERROR",
+                                        "error": "boom", "code_version": "old"}) + "\n")
+            calls: list = []
+            with mock.patch.object(S, "run_slice", _make_fake_slice(script, calls)):
+                res = S.score(cases, graded=True, out_dir=d, version="new")
+        self.assertEqual(calls, [("0", True)])             # prior ERROR ⇒ re-run GRADED, not skipped
+        self.assertEqual(res["graded_records"][0]["status"], "GRADED")
+
+    def test_non_graded_run_also_isolates_errors(self):
+        cases = self._cases(2)
+
+        def _slice(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None, config=None):
+            if cited_pmid == "0":
+                raise RuntimeError("URLError: name resolution failed")
+            return {"verdict": _fake_verdict(cited_pmid, "fully-supported", 0.9, "GRADED"),
+                    "grounded": _fake_grounded(cited_pmid, "")}
+
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run_slice", _slice):
+            res = S.score(cases, graded=False, out_dir=d)   # stub path, no pred file
+        self.assertEqual(res["n_errors"], 1)                # counted even without a jsonl sink
+        self.assertEqual(res["n"], 1)                       # only the surviving case in the metrics
+
+
+class OutputTokenRowTests(unittest.TestCase):
+    def test_output_tokens_and_version_stored_in_prediction_row(self):
+        """Per-round critic output_tokens (WO-C4 §3) + the code_version stamp land in the jsonl row."""
+        from citeval import adjudicator as A
+        from citeval.contracts import ScopeFrame
+
+        class _UsageClient:
+            def complete_with_usage(self, *, model, system, user, max_tokens, temperature=1.0):
+                if system.startswith("You are the SUPPORTER"):
+                    return json.dumps({"points": [{"quote": "a", "rationale": "s"}]}), 50
+                if system.startswith("You are the REFUTER"):
+                    return json.dumps({"points": []}), 50
+                return json.dumps({"grade": "partially-supported", "confidence": 0.8,
+                                   "grade_rationale_last": "g"}), 313
+
+        def _real_slice(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None,
+                        config=None):
+            g = _fake_grounded(cited_pmid, full_text="Results: a body finding.")
+            v = A.adjudicate(g, ScopeFrame(organism="Humans", provenance="model-inferred"),
+                             claim_text=claim_text, client=_UsageClient(),
+                             config=A.AdjudicationConfig(self_consistency_rounds=2, min_valid_rounds=1,
+                                                         adaptive_early_stopping=False))
+            return {"verdict": v, "grounded": g}
+
+        cases = [{"case_id": "U0", "cited_pmid": "1", "claim_text": "c",
+                  "ground_truth_label": "SUPPORTED"}]
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run_slice", _real_slice):
+            S.score(cases, graded=True, out_dir=d, version="v1")
+            rows = S.read_predictions(Path(d) / "graded_predictions.jsonl")
+        self.assertEqual(rows["U0"]["output_tokens"], [313, 313])   # per-round critic usage persisted
+        self.assertEqual(rows["U0"]["code_version"], "v1")
+
+    def test_verbose_round_line_shows_out_tok(self):
+        logs: list = []
+        with mock.patch.object(S, "_log", lambda m: logs.append(m)):
+            hook = S._round_hook(1, 1, "K0")
+            hook(2, {"grade": "partially-supported"}, 313)
+            hook(3, None, None)                             # truncated round, no usage
+        self.assertTrue(any("round 2 grade=partially-supported out_tok=313" in m for m in logs))
+        self.assertTrue(any("round 3 grade=UNPARSED" in m and "out_tok" not in m for m in logs))
+
+
+class VersionStampTests(unittest.TestCase):
+    def test_code_version_and_branch_are_strings(self):
+        self.assertIsInstance(S.code_version(), str)
+        self.assertTrue(S.code_version())                   # a sha (possibly +dirty) or 'unknown'
+        self.assertIsInstance(S.git_branch(), str)
+
+    def test_unknown_when_git_unavailable(self):
+        with mock.patch.object(S, "_git", side_effect=FileNotFoundError("git not found")):
+            self.assertEqual(S.code_version(), "unknown")
+            self.assertEqual(S.git_branch(), "unknown")
+
+    def test_scorecard_header_shows_code_version(self):
+        cases = [{"case_id": "K0", "cited_pmid": "0", "claim_text": "c",
+                  "ground_truth_label": "SUPPORTED"}]
+        script = {"0": ("fully-supported", 0.9, "GRADED", "body")}
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.object(S, "run_slice", _make_fake_slice(script, [])):
+            res = S.score(cases, graded=True, out_dir=d, version="cafef00d")
+        self.assertEqual(res["code_version"], "cafef00d")
+        self.assertIn("cafef00d", S.render_scorecard(res))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
