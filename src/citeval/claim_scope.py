@@ -50,12 +50,64 @@ PED_MARKERS = [r"\bchildren\b", r"\bpediatric\b", r"\bpaediatric\b", r"\binfants
 ADULT_MARKERS = [r"\badults?\b", r"\belderly\b", r"\bolder adults?\b"]
 DOSE_MARKERS = [r"\bmg/kg\b", r"\bµM\b", r"\buM\b", r"\bmg\b", r"\bdoses?d?\b", r"\bµg\b", r"\bmmol\b", r"\bnmol\b"]
 
+# Asserted effect direction (ScopeFrame.direction; C4's refuter direction-reversal probe +
+# RB1's direction test). Conservative: only set on a clear lexical marker, ordered so the
+# lexical path never invents a direction the wording does not license.
+DIRECTION_MARKERS = {
+    "increase": [r"\bincreas\w*", r"\bimprov\w*", r"\benhanc\w*", r"\bpromot\w*", r"\bprolong\w*",
+                 r"\bextend\w*", r"\belevat\w*", r"\bupregulat\w*", r"\bhigher\b", r"\bgreater\b",
+                 r"\bboost\w*", r"\brais\w*", r"\bgain\w*"],
+    "decrease": [r"\bdecreas\w*", r"\breduc\w*", r"\blower\w*", r"\binhibit\w*", r"\bsuppress\w*",
+                 r"\battenuat\w*", r"\bimpair\w*", r"\bdownregulat\w*", r"\bdeclin\w*",
+                 r"\bworsen\w*", r"\bloss\b", r"\bblock\w*", r"\bprevent\w*"],
+    "no_change": [r"\bno change\b", r"\bno effect\b", r"\bno difference\b", r"\bunchanged\b",
+                  r"\bnot associated\b", r"\bno significant\b", r"\bno impact\b"],
+}
+
 
 def _find(text: str, patterns: list[str]) -> list[str]:
     hits: list[str] = []
     for p in patterns:
         hits += [m.group(0) for m in re.finditer(p, text, re.I)]
     return hits
+
+
+# A negator immediately before a directional verb reverses it ("did not improve", "failed to
+# reduce", "no longer increases"). The lexical path drops such a match rather than assert the
+# reversed direction (honesty rule); the model path handles negation properly.
+_NEGATOR = re.compile(
+    r"\b(?:no|not|n't|never|without|fail(?:s|ed|ing)?|lack(?:s|ing|ed)?|absence|cannot|can't|"
+    r"no longer)\b", re.I)
+
+
+def _find_unnegated(text: str, patterns: list[str], window: int = 16) -> list[str]:
+    """Marker hits whose short preceding context contains no negator."""
+    hits: list[str] = []
+    for p in patterns:
+        for m in re.finditer(p, text, re.I):
+            if _NEGATOR.search(text[max(0, m.start() - window):m.start()]):
+                continue
+            hits.append(m.group(0))
+    return hits
+
+
+def _direction_lexical(atomic_claim: str) -> tuple[str | None, list[str]]:
+    """Explicit-marker-only effect direction. Returns (direction, verbatim_evidence).
+
+    `no_change` phrases win (most specific). Otherwise a direction is asserted only when
+    exactly ONE of increase/decrease markers is present AND it is not negated — a mixed or
+    negated claim is left None rather than guessed (honesty rule; the model path handles the
+    nuanced cases)."""
+    nc = _find(atomic_claim, DIRECTION_MARKERS["no_change"])
+    if nc:
+        return "no_change", nc
+    inc = _find_unnegated(atomic_claim, DIRECTION_MARKERS["increase"])
+    dec = _find_unnegated(atomic_claim, DIRECTION_MARKERS["decrease"])
+    if inc and not dec:
+        return "increase", inc
+    if dec and not inc:
+        return "decrease", dec
+    return None, []
 
 
 def parse_claim_scope_lexical(atomic_claim: str) -> ScopeFrame:
@@ -79,10 +131,13 @@ def parse_claim_scope_lexical(atomic_claim: str) -> ScopeFrame:
     elif adult:
         population, pop_ev = "adult", adult
 
+    direction, dir_ev = _direction_lexical(atomic_claim)
+
     return ScopeFrame(
         organism=organism, organism_evidence=org_ev,
         population=population, population_evidence=pop_ev,
-        effect=None, dose_stated=bool(_find(atomic_claim, DOSE_MARKERS)),
+        effect=None, direction=direction, direction_evidence=dir_ev,
+        dose_stated=bool(_find(atomic_claim, DOSE_MARKERS)),
         provenance=prov, tier=tier,
     )
 
@@ -92,6 +147,7 @@ def parse_claim_scope_lexical(atomic_claim: str) -> ScopeFrame:
 # --------------------------------------------------------------------------- #
 
 _TIERS = ("high", "medium", "low")
+_DIRECTIONS = ("increase", "decrease", "no_change")
 
 # Canonicalize model organism values to the vocabulary the downstream metadata
 # comparison (adjudicator_stub._species_axis) matches against — an off-list or
@@ -129,6 +185,14 @@ the organism is inferred from an implicit relevance claim with no explicit marke
 - "population": "pediatric", "adult", or null.
 - "population_evidence": array of exact verbatim words for the population, else [].
 - "effect": a short verbatim phrase naming the asserted effect/finding, or null.
+- "direction": the asserted direction of the effect — "increase", "decrease", \
+"no_change", or null when the claim asserts no clear direction. "increase" = the claim \
+says something goes up / improves / is promoted / prolonged; "decrease" = goes down / is \
+reduced / inhibited / suppressed / impaired; "no_change" = explicitly no effect / no \
+difference.
+- "direction_evidence": array of the EXACT words copied verbatim from the claim that \
+establish the direction (e.g. "increased their survival", "inhibits"). Empty array if \
+direction is null.
 - "dose_stated": true if the claim states a dose or concentration, else false.
 - "tier": your confidence — "high", "medium", or "low".
 - "rationale": <= 25 words.
@@ -243,6 +307,17 @@ def _frame_from_model(atomic_claim: str, data: dict) -> ScopeFrame:
         if isinstance(data.get("effect"), str) else []
     effect = effect_hit[0] if effect_hit else None
 
+    # direction is the asserted effect direction (C4's refuter direction-reversal probe).
+    # Coerce to the {increase, decrease, no_change} vocabulary; same honesty rule as organism —
+    # a direction with no surviving verbatim span on the claim side is ungrounded, so drop it.
+    direction = data.get("direction")
+    direction = direction.strip().lower() \
+        if isinstance(direction, str) and direction.strip().lower() in _DIRECTIONS else None
+    dir_ev = _verbatim_spans(data.get("direction_evidence"), atomic_claim)
+    if direction is not None and not dir_ev:
+        direction = None
+        dir_ev = []
+
     tier = str(data.get("tier", "")).strip().lower()
     if tier not in _TIERS:
         tier = "low"
@@ -262,6 +337,8 @@ def _frame_from_model(atomic_claim: str, data: dict) -> ScopeFrame:
         population=population,
         population_evidence=pop_ev,
         effect=effect,
+        direction=direction,
+        direction_evidence=dir_ev,
         dose_stated=_as_bool(data.get("dose_stated")),
         provenance=provenance,
         tier=tier,

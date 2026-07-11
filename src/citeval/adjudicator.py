@@ -1,37 +1,44 @@
-"""C4 — adversarial adjudicator (mock-first scaffold).
+"""C4 — adversarial adjudicator (RB1/RB2/RB3 finalized).
 
 `adjudicate(grounded, scope, claim_text="") -> Verdict` is a drop-in replacement for
 `adjudicator_stub.adjudicate_stub` at the runner seam. It runs an adversarial
 **supporter → refuter → critic** pipeline (all **Opus 4.8**) that produces the graded
-`substantive_support` axis with a confidence tier, while the objective axes
+`substantive_support` axis with a calibrated confidence, while the objective axes
 (retraction, species/population scope) come — unchanged and unoverturnable — from the
 shared metadata logic in `objective_axes.py`.
 
-What is real now vs. what RB1–RB3 finalize
-------------------------------------------
-- **Structural (real now):** the three-agent wiring; the metadata-override boundary
-  (agents are handed the objective findings as fixed facts and have no code path to
-  change them); the **verbatim guard** (every supporter/refuter quote must be a
-  whitespace-normalized substring of the cited grounding corpus, or it is discarded and
-  counted); the swappable `overall` rollup; the confidence + `NOT_ENOUGH_INFO`
-  abstention *interface* (self-consistency over N critic rounds).
-- **PROVISIONAL (clearly-labeled constants / injected vocab):** prompt wording (RB2),
-  the RB1 grade scale (`prompts.RB1_GRADES`), and the confidence/abstention thresholds
-  (`SELF_CONSISTENCY_ROUNDS`, `ABSTAIN_AGREEMENT_THRESHOLD`, tier cutoffs). RB3 tunes the
-  self-consistency mechanism and recalibration jointly; the seams are already in place.
+RB1/RB2/RB3 integration (design/research_briefs/results/INTEGRATION_SPEC.md):
+- **RB1 scale** (`prompts.RB1_GRADES`, grade-1 = `unsupported-for-the-claim`), plus the two
+  non-graded outcomes `NOT_ENOUGH_INFO` (abstention) and `N/A — non-substantiating` (Trap 2).
+- **RB2 agent design:** evidence-first/grade-last critic; the **full triad** is resampled N
+  times (warm advocates diversify spans, a cool critic stays stable); transcripts are
+  identity-blinded + order-randomized (deterministically, by sample index — Balanced Position
+  Calibration without RNG so tests reproduce); refuter `routes_to="rollup_not_grade"` points
+  are **hard-filtered before the critic votes**, so scope over-generalization can never depress
+  the grade (CONTEXT_PACK §6; RB1 §D scope-capping OVERRIDDEN).
+- **RB3 calibration:** confidence = exact modal agreement `conf_agr = a_exact` over N=7
+  (primary), with adjacent agreement `a_adj` and an Avg-Conf `conf_hybrid` (numeric verbalized
+  confidences as weights) auxiliary; abstain when `a_exact < tau_abstain` **and the split is
+  not adjacent-only**, or when the grades are **non-adjacent multimodal**; never abstain on an
+  adjacent-only split. A post-hoc recalibration hook fills `evidence.calibration.note`.
+
+Every threshold is a **PROVISIONAL, recalibratable seed** (RB3 tunes them jointly on the human
+spot-check); only `OPUS_MODEL` is a hard invariant. All §6 evidence-dict keys are unchanged so
+C5 (`reporting.py`) renders with no fixup; the new numeric signals live in richer keys C5 ignores.
 
 Known limitation (WO-C4 manager decision): the grounding corpus is the cited paper's
-**title + abstract only** — PubMed metadata carries no full text. Full-text spans slot
-into `_grounding_corpus` later without reshaping anything else.
+**title + abstract only** — PubMed metadata carries no full text. Full-text spans slot into
+`_grounding_segments` later without reshaping anything else.
 
 No live API in CI: the Anthropic SDK is imported lazily (only when the default client is
-constructed), so importing this module never requires a key or a network. Tests inject a
-mock client; the pipeline requests `OPUS_MODEL` on every call so the invariant is testable.
+constructed), so importing this module never requires a key or a network. Tests inject a mock
+client; the pipeline requests `OPUS_MODEL` on every call so the invariant is testable.
 """
 from __future__ import annotations
 
 import json
 import re
+import statistics
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -46,8 +53,10 @@ from .objective_axes import (
 )
 from .prompts import (
     GRADE_VALUES,
+    NON_SUBSTANTIATING,
     NOT_ENOUGH_INFO,
-    VERBALIZED_CONFIDENCE,
+    ORDINAL_GRADES,
+    ORDINAL_INDEX,
     critic,
     refuter,
     supporter,
@@ -59,17 +68,20 @@ from .prompts import (
 OPUS_MODEL = "claude-opus-4-8"
 
 # ----------------------------------------------------------------------------------
-# PROVISIONAL scaffold defaults — RB3 tunes these JOINTLY. Kept as labeled module
-# constants and mirrored on AdjudicationConfig so research swaps them without touching
-# the pipeline. Do NOT treat any of these as finalized.
+# PROVISIONAL, RECALIBRATABLE seeds — RB3 tunes these JOINTLY on the human spot-check.
+# Kept as labeled module constants and mirrored on AdjudicationConfig so research swaps
+# them without touching the pipeline. Do NOT treat any of these as finalized.
 # ----------------------------------------------------------------------------------
-SELF_CONSISTENCY_ROUNDS = 5          # critic re-runs over the FIXED grounded evidence
-ABSTAIN_AGREEMENT_THRESHOLD = 0.6    # modal-grade agreement below this ⇒ abstain
-MIN_VALID_ROUNDS = 3                 # too few parseable rounds ⇒ abstain (anti-false-confidence)
-CONFIDENCE_HIGH_AGREEMENT = 0.8      # tier=high needs this agreement AND verbalized "high"
-CONFIDENCE_MEDIUM_AGREEMENT = 0.6    # tier=medium floor
+SELF_CONSISTENCY_ROUNDS = 7          # RB3: N=7 full-triad samples (odd; avoids ties). Revisit 10–15.
+TAU_ABSTAIN = 0.5                    # RB3 seed; exact-agreement floor below which we consider abstaining
+ADJACENT_FLOOR = 0.7                 # a_adj at/above this ⇒ "adjacent-only split" (do NOT abstain)
+MIN_VALID_ROUNDS = 4                 # too few parseable ordinal rounds ⇒ abstain (anti-false-confidence; ≥4 for N=7)
+CONFIDENCE_HIGH_AGREEMENT = 0.8      # tier=high seed (data-derived by RB3; NOT verbalized-gated)
+CONFIDENCE_MEDIUM_AGREEMENT = 0.6    # tier=medium floor seed
+ADVOCATE_TEMPERATURE = 0.9           # warm advocates diversify spans (RB2/RB3 0.7–1.0)
+CRITIC_TEMPERATURE = 0.2             # cool critic for a stable verdict (RB2 §4)
 MAX_TOKENS_ADVOCATE = 900
-MAX_TOKENS_CRITIC = 400
+MAX_TOKENS_CRITIC = 500
 
 _WS = re.compile(r"\s+")
 
@@ -85,10 +97,12 @@ class AnthropicModelClient:
         import anthropic  # lazy: only touched when a real adjudication actually runs
         self._client = anthropic.Anthropic()
 
-    def complete(self, *, model: str, system: str, user: str, max_tokens: int) -> str:
+    def complete(self, *, model: str, system: str, user: str, max_tokens: int,
+                 temperature: float = 1.0) -> str:
         msg = self._client.messages.create(
             model=model,
             max_tokens=max_tokens,
+            temperature=temperature,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -106,16 +120,23 @@ class AdjudicationConfig:
     """All PROVISIONAL knobs in one swappable place (RB1/RB3 finalize the values).
 
     `rollup` is the swappable `overall` policy; when None the module default is used.
-    `OPUS_MODEL` is deliberately NOT a field here — the model is a hard invariant, not a knob.
+    `recalibration` is the RB3 post-hoc temperature/Platt map applied to the emitted
+    confidence (fills `evidence.calibration.note`); identity when None.
+    `OPUS_MODEL` is deliberately NOT a field — the model is a hard invariant, not a knob.
     """
     self_consistency_rounds: int = SELF_CONSISTENCY_ROUNDS
-    abstain_agreement_threshold: float = ABSTAIN_AGREEMENT_THRESHOLD
+    tau_abstain: float = TAU_ABSTAIN
+    adjacent_floor: float = ADJACENT_FLOOR
     min_valid_rounds: int = MIN_VALID_ROUNDS
     confidence_high_agreement: float = CONFIDENCE_HIGH_AGREEMENT
     confidence_medium_agreement: float = CONFIDENCE_MEDIUM_AGREEMENT
+    advocate_temperature: float = ADVOCATE_TEMPERATURE
+    critic_temperature: float = CRITIC_TEMPERATURE
     max_tokens_advocate: int = MAX_TOKENS_ADVOCATE
     max_tokens_critic: int = MAX_TOKENS_CRITIC
+    adaptive_early_stopping: bool = True   # stop once rounds are unanimous (past the min floor)
     rollup: Optional[Callable[[list[AxisFinding]], str]] = None
+    recalibration: Optional[Callable[[float], float]] = None
 
 
 # ==================================================================================
@@ -184,9 +205,11 @@ def _parse_json(text: str) -> Optional[dict]:
     return obj if isinstance(obj, dict) else None
 
 
-def _call_agent(client, system: str, user: str, max_tokens: int) -> Optional[dict]:
+def _call_agent(client, system: str, user: str, max_tokens: int,
+                temperature: float) -> Optional[dict]:
     """One model turn on Opus 4.8, parsed to a dict (None if unparseable)."""
-    text = client.complete(model=OPUS_MODEL, system=system, user=user, max_tokens=max_tokens)
+    text = client.complete(model=OPUS_MODEL, system=system, user=user,
+                           max_tokens=max_tokens, temperature=temperature)
     return _parse_json(text)
 
 
@@ -196,66 +219,239 @@ def _points(raw: Optional[dict]) -> list[dict]:
     return []
 
 
+_SCOPE_TAGS = ("over_generalization", "scope_overgeneralization")
+
+
+def _routes_to_grade(p: dict) -> bool:
+    """A refuter point may move the grade UNLESS it is scope over-generalization.
+
+    The scope TAG is an UNCONDITIONAL, first-priority structural gate (b6): an
+    over_generalization point is barred from the grade regardless of what `routes_to` claims
+    — the guard must not be defeated by the warm model's self-declared routing (CLAUDE.md:
+    "enforce structurally, not by convention"; CONTEXT_PACK §6 — scope never depresses the
+    grade). Only for a NON-scope tag is `routes_to` consulted, and any `rollup*` variant
+    (case-folded) routes to the rollup so a near-miss string cannot slip a point onto the grade.
+    """
+    tag = (p.get("distortion_type") or p.get("failure_mode") or "").strip().lower()
+    if tag in _SCOPE_TAGS:
+        return False
+    route = p.get("routes_to")
+    if isinstance(route, str) and route.strip():
+        return not route.strip().lower().startswith("rollup")
+    return True
+
+
+def _num_conf(r: dict) -> Optional[float]:
+    """The critic's numeric self-reported confidence in [0,1] (Avg-Conf weight). None if absent/bad."""
+    c = r.get("confidence")
+    if isinstance(c, bool):  # bool is an int subclass — reject before the numeric branch
+        return None
+    if isinstance(c, (int, float)):
+        return max(0.0, min(1.0, float(c)))
+    return None
+
+
+def _round_rationale(r: dict) -> str:
+    return str(r.get("grade_rationale_last") or r.get("reasoning") or r.get("rationale") or "").strip()
+
+
 # ==================================================================================
-# Self-consistency aggregation + abstention (the confidence interface; RB3 tunes it)
+# One triad sample (supporter → refuter → critic), blinded + order-randomized
+# ==================================================================================
+def _to_argument_points(points: Sequence[dict], reason_key: str) -> list[dict]:
+    """Map an advocate's surviving points to the blinded critic-facing shape {quote, claim}."""
+    return [{"quote": p.get("quote", ""), "claim": p.get(reason_key, "")} for p in points]
+
+
+def _blinded_arguments(sup_points: Sequence[dict], ref_grade_points: Sequence[dict],
+                       sample_idx: int) -> list[dict]:
+    """Two identity-blinded argument blocks in a per-sample-randomized order.
+
+    Deterministic Balanced Position Calibration: even samples present the support case first,
+    odd samples present the refute case first — position bias averages out across N without RNG
+    (so tests reproduce exactly). Agent identity ("supporter"/"refuter") is stripped.
+    """
+    sup_block = {"points": _to_argument_points(sup_points, "rationale")}
+    ref_block = {"points": _to_argument_points(ref_grade_points, "objection")}
+    ordered = [sup_block, ref_block] if sample_idx % 2 == 0 else [ref_block, sup_block]
+    for label, block in zip(("A", "B"), ordered):
+        block["label"] = label
+    return ordered
+
+
+@dataclass
+class _TriadSample:
+    critic_round: Optional[dict]
+    sup_points: list[dict]
+    ref_grade_points: list[dict]
+    ref_rollup_points: list[dict]
+    sup_discarded: int
+    ref_discarded: int
+
+
+def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[str],
+               objective_facts: dict, segments: Sequence[str], sample_idx: int,
+               cfg: AdjudicationConfig) -> _TriadSample:
+    # Supporter (warm) → verbatim guard.
+    sup_raw = _call_agent(client, supporter.SYSTEM,
+                          supporter.build_user(claim_text, g.title, g.abstract),
+                          cfg.max_tokens_advocate, cfg.advocate_temperature)
+    sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
+
+    # Refuter (warm) → verbatim guard → routes_to hard-filter (b6).
+    ref_raw = _call_agent(client, refuter.SYSTEM,
+                          refuter.build_user(claim_text, g.title, g.abstract, direction),
+                          cfg.max_tokens_advocate, cfg.advocate_temperature)
+    ref_survivors, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
+    ref_grade_points = [p for p in ref_survivors if _routes_to_grade(p)]
+    ref_rollup_points = [p for p in ref_survivors if not _routes_to_grade(p)]
+
+    # Critic (cool) over the blinded, order-randomized arguments — grade-routed points only.
+    arguments = _blinded_arguments(sup_points, ref_grade_points, sample_idx)
+    critic_user = critic.build_user(claim_text, g.title, g.abstract, arguments,
+                                    objective_facts, GRADE_VALUES, direction)
+    critic_round = _call_agent(client, critic.SYSTEM, critic_user,
+                               cfg.max_tokens_critic, cfg.critic_temperature)
+    return _TriadSample(critic_round, sup_points, ref_grade_points, ref_rollup_points,
+                        sup_discarded, ref_discarded)
+
+
+def _unanimous_ordinal(rounds: Sequence[Optional[dict]]) -> bool:
+    """True iff every parsed round carries the SAME ordinal grade (adaptive early-stop trigger)."""
+    seen = set()
+    for r in rounds:
+        if not isinstance(r, dict):
+            return False
+        g = r.get("grade")
+        if g not in ORDINAL_INDEX:
+            return False
+        seen.add(g)
+    return len(seen) == 1 and len(rounds) > 0
+
+
+# ==================================================================================
+# Self-consistency aggregation (median-aware ordinal vote + RB3 confidence signals)
 # ==================================================================================
 @dataclass
 class _Aggregate:
-    grade: Optional[str]
-    agreement: float
-    verbalized: str
-    n_valid: int
+    grade: Optional[str]                 # median-aware modal ORDINAL grade (None if no ordinal rounds)
+    grade_index: Optional[int]
+    a_exact: float                       # conf_agr (primary): fraction of ordinal rounds == g*
+    a_adj: float                         # fraction within ±1 ordinal of g*
+    conf_hybrid: float                   # Avg-Conf: Σ 1{gᵢ=g*}·Cᵢ / Σ Cᵢ
+    n_valid: int                         # # ordinal rounds
+    n_nei: int                           # # NOT_ENOUGH_INFO rounds
+    n_na: int                            # # N/A — non-substantiating rounds
+    n_parsed: int                        # # rounds with any recognized grade
+    non_adjacent_multimodal: bool
+    ordinal_distribution: dict[str, int]
     rationale: str
 
 
-def _aggregate_rounds(rounds: Sequence[Optional[dict]]) -> _Aggregate:
-    """Modal grade + agreement fraction over the valid critic rounds (CONTEXT_PACK §7)."""
-    grades: list[str] = []
-    confidences: list[str] = []
+def _aggregate_rounds(rounds: Sequence[Optional[dict]], cfg: AdjudicationConfig) -> _Aggregate:
+    """Median-aware modal ordinal grade + RB3 agreement signals over the valid rounds."""
+    indices: list[int] = []
+    confidences: list[float] = []          # numeric confidence per ordinal round (aligned to indices)
     rationale_by_grade: dict[str, str] = {}
+    n_nei = n_na = n_parsed = 0
     for r in rounds:
         if not isinstance(r, dict):
             continue
-        g = r.get("grade")
-        if g in GRADE_VALUES:
-            grades.append(g)
-            rationale_by_grade.setdefault(g, str(r.get("rationale", "")).strip())
-        c = r.get("confidence")
-        if c in VERBALIZED_CONFIDENCE:
-            confidences.append(c)
-    n_valid = len(grades)
+        gr = r.get("grade")
+        if gr in ORDINAL_INDEX:
+            n_parsed += 1
+            indices.append(ORDINAL_INDEX[gr])
+            conf = _num_conf(r)
+            confidences.append(conf if conf is not None else 0.0)
+            rationale_by_grade.setdefault(gr, _round_rationale(r))
+        elif gr == NOT_ENOUGH_INFO:
+            n_parsed += 1
+            n_nei += 1
+        elif gr == NON_SUBSTANTIATING:
+            n_parsed += 1
+            n_na += 1
+
+    n_valid = len(indices)
     if n_valid == 0:
-        return _Aggregate(None, 0.0, "low", 0, "")
-    grade, top = Counter(grades).most_common(1)[0]
-    agreement = top / n_valid
-    verbalized = Counter(confidences).most_common(1)[0][0] if confidences else "low"
-    return _Aggregate(grade, agreement, verbalized, n_valid, rationale_by_grade.get(grade, ""))
+        return _Aggregate(None, None, 0.0, 0.0, 0.0, 0, n_nei, n_na, n_parsed, False, {}, "")
+
+    counts = Counter(indices)
+    present = sorted(counts)
+    median_val = statistics.median(indices)
+    # g* = observed ordinal grade nearest the median; ties → more frequent, then better (lower) grade.
+    g_index = min(present, key=lambda i: (abs(i - median_val), -counts[i], i))
+    grade = ORDINAL_GRADES[g_index]
+
+    a_exact = counts[g_index] / n_valid
+    a_adj = sum(c for i, c in counts.items() if abs(i - g_index) <= 1) / n_valid
+    num = sum(confidences[k] for k in range(n_valid) if indices[k] == g_index)
+    den = sum(confidences)
+    conf_hybrid = (num / den) if den > 0 else a_exact
+    non_adjacent_multimodal = a_adj < cfg.adjacent_floor
+    distribution = {ORDINAL_GRADES[i]: c for i, c in sorted(counts.items())}
+    return _Aggregate(grade, g_index, a_exact, a_adj, conf_hybrid, n_valid, n_nei, n_na,
+                      n_parsed, non_adjacent_multimodal, distribution,
+                      rationale_by_grade.get(grade, ""))
 
 
-def _decide_abstention(agg: _Aggregate, sup: Sequence[dict], ref: Sequence[dict],
-                       cfg: AdjudicationConfig) -> bool:
-    """Abstain (NOT_ENOUGH_INFO) when the graded signal is not trustworthy.
+# ==================================================================================
+# Outcome decision — GRADED / ABSTAINED / NON_SUBSTANTIATING (RB3 Part 2)
+# ==================================================================================
+@dataclass
+class _Outcome:
+    status: str                # "GRADED" | "ABSTAINED" | "NON_SUBSTANTIATING"
+    verdict: str               # the emitted verdict string
+    abstained: bool
+    non_substantiating: bool
+    reason: str
 
-    PROVISIONAL policy (RB3): abstain if there is no usable critic signal, too few valid
-    rounds, the critic itself abstained, self-consistency is below threshold, or there is
-    no verbatim-grounded evidence either way. Abstentions are recorded, not scored wrong.
+
+def _decide_outcome(agg: _Aggregate, has_grounded_evidence: bool, rounds_run: int,
+                    cfg: AdjudicationConfig) -> _Outcome:
+    """Map the aggregate to one of three outcomes.
+
+    Priority (RB2 §2.3 / RB3 Part 2): a critic MAJORITY of `N/A` → non-substantiating (Trap 2,
+    off the support scale); a majority of NEI → abstain; otherwise grade on the ordinal rounds,
+    abstaining only when the graded signal is untrustworthy — too few valid rounds, no grounded
+    evidence, or the split is dispersed. Abstain on the substantive path when the grades are
+    non-adjacent multimodal (a_adj < adjacent_floor) OR agreement is below tau_abstain AND the
+    split is not a PURE adjacent-only split (a_adj == 1.0). NEVER abstain on a pure adjacent-only
+    split — that is ordinal boundary noise, resolve to g* with moderate confidence.
     """
+    # NA/NEI majority is over the samples RUN, not the parseable subset (RB2 §2.3): unparseable
+    # rounds count AGAINST reaching a majority rather than shrinking the denominator.
+    half = -(-rounds_run // 2)  # ceil(rounds_run / 2)
+    if agg.n_na >= half and agg.n_na >= agg.n_nei and agg.n_na >= agg.n_valid:
+        return _Outcome("NON_SUBSTANTIATING", NON_SUBSTANTIATING, False, True,
+                        "Critic majority judged the citation non-substantiating (method/background/"
+                        "passing citation) — off the support scale (Trap 2).")
+    if agg.n_nei >= half and agg.n_nei >= agg.n_valid:
+        return _Outcome("ABSTAINED", NOT_ENOUGH_INFO, True, False,
+                        "Critic majority returned NOT_ENOUGH_INFO.")
     if agg.grade is None or agg.n_valid < cfg.min_valid_rounds:
-        return True
-    if agg.grade == NOT_ENOUGH_INFO:
-        return True
-    if agg.agreement < cfg.abstain_agreement_threshold:
-        return True
-    if not sup and not ref:
-        return True
-    return False
+        return _Outcome("ABSTAINED", NOT_ENOUGH_INFO, True, False,
+                        "Too few parseable substantive rounds to place a grade.")
+    if not has_grounded_evidence:
+        return _Outcome("ABSTAINED", NOT_ENOUGH_INFO, True, False,
+                        "No verbatim-grounded evidence either way.")
+    # `adjacent_only` (the carve-out) is a STRICTLY higher bar than the multimodal floor: ALL
+    # mass within ±1 of g*. This leaves a live middle band (some non-adjacent mass, but
+    # a_adj ≥ adjacent_floor) where `a_exact < tau_abstain` fires — so tau is not dead code.
+    adjacent_only = agg.a_adj >= 1.0
+    if agg.non_adjacent_multimodal or (agg.a_exact < cfg.tau_abstain and not adjacent_only):
+        return _Outcome("ABSTAINED", NOT_ENOUGH_INFO, True, False,
+                        f"Self-consistency dispersed (a_exact={agg.a_exact:.2f}, "
+                        f"a_adj={agg.a_adj:.2f}, tau={cfg.tau_abstain}).")
+    return _Outcome("GRADED", agg.grade, False, False,
+                    agg.rationale or "Graded from the adversarial supporter/refuter exchange.")
 
 
 def _confidence_tier(agg: _Aggregate, cfg: AdjudicationConfig) -> str:
-    """Map (agreement, verbalized) → confidence tier. PROVISIONAL (RB3 recalibrates)."""
-    if agg.agreement >= cfg.confidence_high_agreement and agg.verbalized == "high":
+    """Confidence tier from `conf_agr` = a_exact (RB3 primary). Data-derived seeds; NO
+    verbalized-confidence gate (verbalized is a weight, not a gate — RB3 §3.6)."""
+    if agg.a_exact >= cfg.confidence_high_agreement:
         return "high"
-    if agg.agreement >= cfg.confidence_medium_agreement:
+    if agg.a_exact >= cfg.confidence_medium_agreement:
         return "medium"
     return "low"
 
@@ -268,6 +464,10 @@ def default_rollup(findings: list[AxisFinding]) -> str:
     'not supported as stated' regardless of the substantive grade; otherwise `overall`
     tracks the substantive grade. Combination happens here, in the open — the substantive
     grade is reported ALONGSIDE the gate, never silently depressed by an objective signal.
+
+    Non-graded substantive outcomes render distinctly: `N/A — non-substantiating` (a
+    passing/method citation) and `NOT_ENOUGH_INFO` (abstention) are NOT grades and NOT each
+    other.
     """
     by = {f.axis: f for f in findings}
     gates: list[str] = []
@@ -283,9 +483,19 @@ def default_rollup(findings: list[AxisFinding]) -> str:
         gates.append("POPULATION SCOPE MISMATCH")
 
     sub = by["substantive_support"].verdict
+
+    # How the substantive axis reads when reported alongside a gate / on its own.
+    if sub == NON_SUBSTANTIATING:
+        sub_phrase = "substantive support N/A (passing/method citation)"
+    elif sub == NOT_ENOUGH_INFO:
+        sub_phrase = "substantive support: insufficient evidence (abstained)"
+    else:
+        sub_phrase = f"substantive grade: {sub}"
+
     if gates:
-        return (f"NOT SUPPORTED AS STATED ({'; '.join(gates)}) — substantive grade "
-                f"(held separately): {sub}")
+        return f"NOT SUPPORTED AS STATED ({'; '.join(gates)}) — {sub_phrase} (held separately)"
+    if sub == NON_SUBSTANTIATING:
+        return "NON-SUBSTANTIATING CITATION (passing/method reference) — not graded on the support scale"
     if sub == NOT_ENOUGH_INFO:
         return "INSUFFICIENT EVIDENCE TO GRADE SUBSTANTIVE SUPPORT (abstained)"
     return f"SUBSTANTIVE SUPPORT: {sub}"
@@ -307,43 +517,66 @@ def _headline(points: Sequence[dict], src_key: str, out_key: str) -> dict:
     return {"span": "", out_key: ""}
 
 
-def _build_substantive_finding(agg: _Aggregate, tier: str, abstained: bool,
-                               sup: list[dict], ref: list[dict],
-                               sup_discarded: int, ref_discarded: int,
+def _dedupe(points: Sequence[dict], reason_key: str) -> list[dict]:
+    """Union across rounds, first occurrence wins (round 0 strongest-first stays first)."""
+    seen: set[tuple[str, str]] = set()
+    out: list[dict] = []
+    for p in points:
+        key = (str(p.get("quote", "")), str(p.get(reason_key, "")))
+        if key not in seen:
+            seen.add(key)
+            out.append(p)
+    return out
+
+
+def _build_substantive_finding(agg: _Aggregate, outcome: _Outcome, tier: str,
+                               sup: list[dict], ref_grade: list[dict], ref_rollup: list[dict],
+                               sup_discarded: int, ref_discarded: int, rounds_run: int,
                                cfg: AdjudicationConfig) -> AxisFinding:
-    grade = NOT_ENOUGH_INFO if abstained else agg.grade
-    if abstained:
-        detail = ("Abstained (NOT_ENOUGH_INFO): critic self-consistency below threshold or "
-                  "insufficient verbatim-grounded evidence to place a substantive grade.")
-    else:
-        detail = agg.rationale or "Graded from the adversarial supporter/refuter exchange."
+    verbalized = tier  # §6 `confidence.verbalized` is the emitted tier (a2 reconciliation)
+    # Post-hoc recalibration of the emitted (primary) confidence, if a fitted map is supplied.
+    calibration_note = ""
+    if cfg.recalibration is not None:
+        recal = float(cfg.recalibration(agg.a_exact))
+        calibration_note = f"recalibrated confidence {recal:.2f} (from agreement {agg.a_exact:.2f})"
 
     evidence = {
-        # --- CONTEXT_PACK §6 headline keys (C5-facing; keep exactly these names) ---------
-        "confidence": {"verbalized": agg.verbalized,
-                       "agreement": round(agg.agreement, 4),
+        # --- CONTEXT_PACK §6 headline keys (C5-facing; keep exactly these names/shapes) ------
+        "confidence": {"verbalized": verbalized,
+                       "agreement": round(agg.a_exact, 4),   # conf_agr = a_exact (primary; numeric)
                        "n_samples": agg.n_valid},
-        "calibration": {"note": ""},  # empty until the scorer/RB3 fills recalibration
+        "calibration": {"note": calibration_note},
         "supporter": _headline(sup, "rationale", "point"),
-        "refuter": _headline(ref, "objection", "objection"),
-        "abstained": abstained,
-        # --- richer optional additions (WO-C4 permits; C5 ignores unknown keys) ----------
+        "refuter": _headline(ref_grade, "objection", "objection"),
+        "abstained": outcome.abstained,
+        # --- richer keys (C5 ignores unknown keys; scorer + audit consume them) --------------
+        "non_substantiating": outcome.non_substantiating,
         "supporter_points": sup,
-        "refuter_points": ref,
+        "refuter_points": ref_grade,
+        "refuter_scope_notes": ref_rollup,   # over_generalization (routed to rollup, not the grade)
         "verbatim_guard": {"supporter_discarded": sup_discarded,
                            "refuter_discarded": ref_discarded,
                            "grounding_corpus": "title+abstract"},
         "self_consistency": {"rounds_configured": cfg.self_consistency_rounds,
+                             "rounds_run": rounds_run,
                              "rounds_valid": agg.n_valid,
-                             "agreement": round(agg.agreement, 4),
-                             "abstain_threshold": cfg.abstain_agreement_threshold},
+                             "a_exact": round(agg.a_exact, 4),
+                             "a_adj": round(agg.a_adj, 4),
+                             "conf_hybrid": round(agg.conf_hybrid, 4),
+                             "non_adjacent_multimodal": agg.non_adjacent_multimodal,
+                             "ordinal_distribution": agg.ordinal_distribution,
+                             "n_nei": agg.n_nei,
+                             "n_non_substantiating": agg.n_na,
+                             "grade_ordinal": agg.grade_index,
+                             "tau_abstain": cfg.tau_abstain,
+                             "adjacent_floor": cfg.adjacent_floor},
     }
     return AxisFinding(
         axis="substantive_support",
-        verdict=grade,
+        verdict=outcome.verdict,
         tier=tier,
         provenance="model-inferred",  # §6: graded axis is model-inferred (spans are text-grounded)
-        detail=detail,
+        detail=outcome.reason,
         evidence=evidence,
     )
 
@@ -356,9 +589,10 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     """Adjudicate whether the cited paper substantively supports the claim.
 
     Same signature/seam as `adjudicate_stub` (extra keyword-only `client`/`config` have
-    defaults). `client` must expose `complete(*, model, system, user, max_tokens) -> str`;
-    when None a live Opus 4.8 Anthropic client is constructed lazily. Objective axes come
-    from `objective_axes` and are passed to the agents as fixed facts they cannot overturn.
+    defaults). `client` must expose
+    `complete(*, model, system, user, max_tokens, temperature) -> str`; when None a live
+    Opus 4.8 Anthropic client is constructed lazily. Objective axes come from `objective_axes`
+    and are passed to the agents as fixed facts they cannot overturn.
     """
     cfg = config or AdjudicationConfig()
     client = client or AnthropicModelClient()
@@ -374,38 +608,51 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     }
 
     segments = _grounding_segments(g)
+    direction = scope.direction  # claim's asserted effect direction (refuter/critic direction test)
 
-    # 2. Supporter → verbatim guard.
-    sup_raw = _call_agent(client, supporter.SYSTEM,
-                          supporter.build_user(claim_text, g.title, g.abstract),
-                          cfg.max_tokens_advocate)
-    sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
+    # 2. Full-triad self-consistency: N rounds, warm advocates + cool critic, blinded transcripts.
+    critic_rounds: list[Optional[dict]] = []
+    sup_all: list[dict] = []
+    ref_grade_all: list[dict] = []
+    ref_rollup_all: list[dict] = []
+    sup_discarded_total = ref_discarded_total = 0
+    rounds_run = 0
+    for i in range(cfg.self_consistency_rounds):
+        sample = _run_triad(client, g, claim_text, direction, objective_facts, segments, i, cfg)
+        critic_rounds.append(sample.critic_round)
+        sup_all += sample.sup_points
+        ref_grade_all += sample.ref_grade_points
+        ref_rollup_all += sample.ref_rollup_points
+        sup_discarded_total += sample.sup_discarded
+        ref_discarded_total += sample.ref_discarded
+        rounds_run += 1
+        # Adaptive early-stopping: stop only once the rounds run are BOTH past the min floor AND
+        # a strict majority of the configured N (2*run > N) and unanimous — then the remaining
+        # rounds cannot change the median-aware g* regardless of how they vote. Gating on a
+        # majority of N (not just min_valid_rounds) keeps g*-preservation structural if N is
+        # raised without raising the floor (SELF_CONSISTENCY_ROUNDS notes "Revisit 10–15").
+        if (cfg.adaptive_early_stopping and rounds_run >= cfg.min_valid_rounds
+                and 2 * rounds_run > cfg.self_consistency_rounds
+                and _unanimous_ordinal(critic_rounds)):
+            break
 
-    # 3. Refuter → verbatim guard.
-    ref_raw = _call_agent(client, refuter.SYSTEM,
-                          refuter.build_user(claim_text, g.title, g.abstract),
-                          cfg.max_tokens_advocate)
-    ref_points, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
+    sup_points = _dedupe(sup_all, "rationale")
+    ref_grade_points = _dedupe(ref_grade_all, "objection")
+    ref_rollup_points = _dedupe(ref_rollup_all, "objection")
 
-    # 4. Critic self-consistency: N rounds over the SAME fixed grounded evidence.
-    critic_user = critic.build_user(
-        claim_text, g.title, g.abstract, sup_points, ref_points,
-        objective_facts, GRADE_VALUES, VERBALIZED_CONFIDENCE,
-    )
-    rounds = [_call_agent(client, critic.SYSTEM, critic_user, cfg.max_tokens_critic)
-              for _ in range(cfg.self_consistency_rounds)]
-    agg = _aggregate_rounds(rounds)
+    # 3. Aggregate + decide outcome + confidence tier.
+    agg = _aggregate_rounds(critic_rounds, cfg)
+    has_evidence = bool(sup_points or ref_grade_points)
+    outcome = _decide_outcome(agg, has_evidence, rounds_run, cfg)
+    tier = "low" if outcome.status != "GRADED" else _confidence_tier(agg, cfg)
 
-    # 5. Abstention + confidence tier (the RB3 interface).
-    abstained = _decide_abstention(agg, sup_points, ref_points, cfg)
-    tier = "low" if abstained else _confidence_tier(agg, cfg)
-
-    # 6. Substantive finding (with the §6 evidence keys) + assemble the 4 axes.
-    substantive = _build_substantive_finding(agg, tier, abstained, sup_points, ref_points,
-                                             sup_discarded, ref_discarded, cfg)
+    # 4. Substantive finding (§6 evidence keys) + assemble the 4 axes.
+    substantive = _build_substantive_finding(
+        agg, outcome, tier, sup_points, ref_grade_points, ref_rollup_points,
+        sup_discarded_total, ref_discarded_total, rounds_run, cfg)
     findings = [retr, spec, popn, substantive]
 
-    # 7. Swappable rollup for `overall`.
+    # 5. Swappable rollup for `overall`.
     overall = (cfg.rollup or default_rollup)(findings)
 
     notes = [
@@ -413,11 +660,20 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
         "reason only on substantive_support and may not overturn a structured record "
         "(metadata-override rule).",
         "substantive_support grades substance holding scope constant; scope over-generalization "
-        "is carried by the metadata scope axes and folded into `overall` by a swappable rollup.",
-        f"Verbatim guard: discarded {sup_discarded} supporter and {ref_discarded} refuter "
-        "point(s) whose quotes were not verbatim spans of the cited title+abstract.",
+        "is carried by the metadata scope axes and folded into `overall` by a swappable rollup "
+        "(RB1 §D scope-capping overridden — CONTEXT_PACK §6).",
+        f"Verbatim guard: discarded {sup_discarded_total} supporter and {ref_discarded_total} "
+        "refuter point(s) whose quotes were not verbatim spans of the cited title+abstract.",
+        f"Self-consistency: {rounds_run} full-triad round(s) run; exact agreement "
+        f"{agg.a_exact:.2f}, adjacent agreement {agg.a_adj:.2f} over {agg.n_valid} valid round(s).",
     ]
-    if abstained:
+    if ref_rollup_points:
+        notes.append(f"Refuter noted {len(ref_rollup_points)} scope over-generalization point(s) — "
+                     "routed to `overall`, never the substantive grade.")
+    if outcome.non_substantiating:
+        notes.append("Non-substantiating citation (method/background/passing) — off the support "
+                     "scale (Trap 2); recorded so it is not scored as a graded prediction.")
+    elif outcome.abstained:
         notes.append("Abstained on substantive_support (NOT_ENOUGH_INFO) — recorded so it is not "
                      "scored as a wrong grade.")
 
