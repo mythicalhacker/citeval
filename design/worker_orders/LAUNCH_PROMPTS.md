@@ -222,6 +222,21 @@ Already underway in their own sessions. No kickoff needed here. Reports return t
 session reconciles each against the contracts and finalizes `WO-C4` / the rubric / the calibration
 mechanism. Clarifications already given are captured in `CONTEXT_PACK.md` §6 (RB2) and §7 (RB3).
 
+## 7. Claude Code — WO-C4-integrate (depth: graded axis + calibration)
+
+Run off `master` in its own branch/worktree (`git worktree add ../citeval-c4integ -b feat/c4-integrate`),
+no merge to `main`. Needs `ANTHROPIC_API_KEY` for the live graded path (tests use mocks).
+
+> You are running **WO-C4-integrate** on the **citeval** system (repo root = the folder with `CLAUDE.md`; contracts are frozen). Single integration session — touching C3 + C4 + the scorer together is expected here.
+>
+> **Read first, in order:** 1. `CLAUDE.md`. 2. `design/research_briefs/CONTEXT_PACK.md` — §1 contracts, **§6 axis semantics + the "RB1–3 integration decisions" block**, **§7 measurement constraints**, and the §6 evidence-dict keys. 3. `design/worker_orders/WO-C4-integrate.md` — the authoritative **Manager decisions**, deliverables, and the **Post-corpus update**. 4. `design/research_briefs/results/INTEGRATION_SPEC.md` — the full RB1/RB2/RB3 spec.
+> **Verify env first (paste results):** `cd src && python -m citeval.build_rw_index && python -m citeval.slice_runner --demo` → `ALL PASS`; `PYTHONPATH=src python -m unittest discover -s tests` → 69/69. If not, STOP.
+> **Build only the WO deliverables:** C4 (`adjudicator.py`, `prompts/`), C3 (`claim_scope.py` → populate `direction`), scorer (`scorer.py` → calibration metrics), flag-gated pipeline wiring. **Do NOT touch `contracts.py`** (frozen; `direction` already added).
+> **Honor the manager decisions (they override the spec on conflict):** **§6 governs — scope never caps the substantive grade** (do not implement RB1's grade-capping); outcome/surrogate overreach folds into the grade; passing-mentions → `N/A — non-substantiating`. Adopt RB1 scale (grade-1 = `unsupported-for-the-claim`), RB2 refinements, RB3 calibration (N=7 full-triad, exact modal-agreement, numeric verbalized, data-derived thresholds, temperature/Platt recal).
+> **Calibration reference is HUMAN, never agent-generated (critical — this is the anti-circularity guard):** the scorer compares C4's graded predictions to a `substantive_grade` sidecar supplied by the human spot-check. **Do NOT generate the reference grades with C4 or any model** — that is grading its own homework, the exact failure RB3 exists to prevent. Build the machinery to *ingest* the sidecar; until it exists, calibration reports "pending reference labels." Run the graded axis + draw the ~20–40 calibration sample from **`corpus/corpus_objective.jsonl` (92 cases)**, excluding the 3 retraction-mislabels (`Bs14`, `Bp02`, `Bp03`).
+> **Quality bar + gates:** Opus 4.8 on every model call; every supporter/refuter point quotes a verbatim span or is dropped; tests **mock all model calls** (no live API in CI). The **offline no-regression gate must hold without a key**: `unittest` green (69/69 + your new tests) AND `python -m citeval.scorer` unchanged (stub path 16/17; 92-case objective unchanged). After building, run an adversarial self-review over your diff (contract conformance, §6 scope-capping leak-paths, verbatim-guard soundness, calibration-reference circularity, no-regression) and fix confirmed issues.
+> **Plan-before-code:** post a BUILD PLAN (files, functions, tests, mapping to each WO deliverable) and **wait for my go-ahead before writing code.** If a contract seems to need changing, STOP and flag it.
+
 ## Where everything returns
 
 Build worktrees → merge to `main` (manager integrates). Corpus → `corpus/`. Research → results/.

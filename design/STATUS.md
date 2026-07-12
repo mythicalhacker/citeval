@@ -1,0 +1,111 @@
+# citeval — system design & build status
+
+Where the system is as of the 92-case scored run. Green = built & verified; amber = built but not
+yet integrated/exercised; dashed = pending.
+
+```mermaid
+flowchart LR
+  subgraph IN["Inputs (C1 modes)"]
+    direction TB
+    M1["claim + PMID/DOI"]
+    M2["claim + citation string"]
+    M3["manuscript / BYO paper"]
+  end
+
+  C1["C1 · Ingestion & extraction<br/>3 modes · JATS · verbatim guard"]
+  C2["C2 · Grounding<br/>MeSH tree · RetractionWatch × NCBI"]
+  C3["C3 · Claim scope<br/>Opus 4.8 + lexical fallback"]
+  C4["C4 · Adjudication<br/>supporter · refuter · critic"]
+  C5["C5 · Reporting<br/>markdown · HTML · BYO"]
+  C6a["C6a · Corpus (Claude Science)<br/>92 cases · objective labels"]
+  C6b(["C6b · Scorer / harness<br/>per-axis metrics"])
+  G["graded axis + calibration<br/>MEASURED · coverage 0.21 · full-text next"]
+  H["reference grades<br/>30 labels — DONE"]
+  IN --> C1
+  C1 -->|cited id| C2
+  C1 -->|claim| C3
+  C2 --> C4
+  C3 --> C4
+  C4 --> C5
+  C5 --> C6b
+  C6a --> C6b
+  C4 -. WO-C4-integrate .-> G
+  G -. needs .-> H
+  G -.-> C6b
+  classDef built fill:#e7f4ea,stroke:#3f7a4f,color:#12301d
+  classDef amber fill:#fdf0e0,stroke:#c8822e,color:#3a2a12
+  classDef pending fill:#eef0f2,stroke:#9aa3ad,color:#3a4048,stroke-dasharray:5 4
+  class C1,C2,C3,C4,C5,C6a,C6b,G,H built
+  class M1,M2,M3 built
+```
+
+**Legend.** Green = built, tested, on `master` (69/69 unit tests green). Amber = code built but not
+fully exercised end-to-end: **C4** is the mock-first adversarial scaffold (RB1–3 not yet wired, not
+yet in the pipeline); **C3**'s Opus path is built but runs only with an API key (the offline scorer
+uses the lexical fallback). Dashed = pending: the live graded axis + calibration, which `WO-C4-integrate`
+delivers, and the human spot-check that produces the calibration numbers.
+
+## Component status
+
+| # | Component | Status | Tests | What's left |
+|---|---|---|---|---|
+| C1 | Ingestion & extraction | ✅ built & verified | 31 | — (BYO demo assembly is separate) |
+| C2 | Resolution & grounding | ✅ built & verified | slice/scorer | expose as an **MCP server** (reuse) |
+| C3 | Claim scope parser | ✅ built (Opus + lexical) | 23 | run the **Opus path live** (needs key) — lifts scope recall off the lexical floor |
+| C4 | Adjudication (S/R/C) | ✅ integrated (RB1/RB2/RB3) | 98 total | live via `--graded`; calibration numbers pending human labels |
+| C5 | Reporting | ✅ built & verified | 13 | — (renders the graded axis once C4 feeds it) |
+| C6a | Corpus generator | ✅ delivered (92 cases) | — | retraction-screen B/C sources; B-population shortfall (structural) |
+| C6b | Scorer / harness | ✅ objective axes | — | add **calibration metrics** (Brier/AURC/QWK) — part of WO-C4-integrate |
+
+Frozen shared contract (`contracts.py`) + the 6 invariants are implemented structurally. Research
+RB1–3 are complete and reconciled into `INTEGRATION_SPEC.md` + `WO-C4-integrate.md`.
+
+## Measured result (92-case objective corpus)
+
+- **Scope specificity 1.00** — 38/38 SUPPORTED controls clean, incl. all **18 hard negatives** (human
+  claims citing papers that also mention animals). No false mismatches.
+- **Retraction recall 1.00** — all 28 caught; the 3 apparent "false positives" were **true retractions
+  the corpus mislabelled**, which our dual-source (RetractionWatch × NCBI) grounding caught → adjusted
+  precision ≈ 1.00. The metadata-overrides-model thesis, validated.
+- **Scope recall 0.65** — the honest **lexical floor** (offline, no key); all 9 misses are implicit
+  over-generalizations the Opus C3 path is built to catch.
+
+## Graded-axis calibration — first live run (30-case subset)
+
+- **Objective axes this run:** retraction 1.00/1.00/1.00; **scope recall 0.91** (up from the 0.65
+  lexical floor — the live **Opus C3** caught the implicit over-generalizations, as predicted); controls 9/9.
+- **Graded axis: honest but low-coverage.** C4 graded **6/28** (coverage 0.21), **abstained on 22** —
+  including *every* SUPPORTED control, which the full-text human reference graded confidently. C4 sees
+  only title+abstract, so it abstains rather than guess: the §8 confident-nonsense failure **avoided**.
+  When it commits it is accurate — exact 0.83, **±1-adjacent 1.00**, QWK 0.98.
+- **Not yet calibrated.** Confidence degenerate (AUROC 0.50; agreement saturated at 1.0 because
+  abstention already skims the uncertain cases); N=6 far too small to certify calibration.
+- **Root cause + fix:** the reference read **full text**; C4 grades from **abstract only**. Full-text
+  grounding for C4 (C1's JATS pipeline already retrieves it) raises coverage, spreads confidence, and
+  yields enough graded cases to calibrate. Then re-run this harness.
+
+## Pending / needs implementation (in priority order)
+
+1. ✅ **WO-C4-integrate — DONE** (merged 585a965): RB1/RB2/RB3 wired into C4, scorer calibration
+   metrics added, graded axis flag-gated. 98/98 tests, no regression.
+2. ✅ **Reference grades — DONE**: 30-case `substantive_grade` reference (Claude Science, full-text).
+3. ✅ **First live graded run — DONE**: numbers are in and honest — objective axes near-perfect,
+   graded axis accurate-when-committing but low-coverage (0.21) and not-yet-calibrated. See section above.
+4. **Full-text grounding for C4 — the clear next build.** C4 grades from title+abstract only; the
+   reference read full text. Feed C4 the cited paper's full text (C1's JATS pipeline already fetches
+   it) → raises coverage, spreads confidence off the saturated 1.0, gives enough graded cases to
+   calibrate. Then re-run `--graded` and re-read this harness. *This is the path to a calibrated axis.*
+5. **More graded cases + human spot-check** — expand the reference set (N=6 graded is too small) and
+   spot-check ~6 of the AI reference grades against a human, to retire the AI-reference caveat.
+6. **Corpus refinements** — screen B/C sources for retraction (3 mislabels); optional held-out test set.
+7. **Reusability/demo** — expose C2 as an MCP server; assemble the live bring-your-own-paper demo.
+
+## One-line state
+
+The **objective half is proven at scale** (grounded, measured, honest — it even caught corpus
+mislabels). The **graded half is integrated, live, and measured**: it behaves exactly as the thesis
+demands — it **abstains rather than fabricate** (79% on abstract-only evidence) and is accurate on
+what it commits to (±1-adjacent 1.00) — but it is **not yet calibrated** (coverage 0.21, degenerate
+confidence, N too small). The one clear next step is **full-text grounding for C4**, then re-run the
+calibration harness. The system failed *safe*, not confident-wrong — the property the design exists
+to guarantee.

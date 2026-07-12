@@ -51,6 +51,12 @@ Calibration metrics need a **6-level graded reference label** per case, which `e
 `substantive_grade` sidecar field (a corpus/eval sidecar — **not** a `contracts.py` change). Until
 then the graded axis produces verdicts and calibration reports "pending reference labels."
 
+**Post-corpus update (2026-07-09):** run the graded axis and draw the ~20–40 calibration sample from
+the delivered **`corpus/corpus_objective.jsonl` (92 cases)**, not the 17-case fixture. **Exclude the
+3 retraction-mislabelled cases** (`Bs14`, `Bp02`, `Bp03` — their cited papers 29206300 / 12531578 are
+actually retracted per RetractionWatch × NCBI) from the substantive-grade sample; they belong to the
+retraction axis, not a clean substantive grade. (See `outputs/scorecard/corpus_findings.md`.)
+
 ## Acceptance
 - **No regression (offline, no key):** `python -m unittest discover -s tests` green;
   `python -m citeval.scorer` unchanged (16/17, graded PENDING via the stub).
