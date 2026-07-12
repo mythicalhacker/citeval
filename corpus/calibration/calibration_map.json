@@ -1,10 +1,10 @@
 {
   "method": "platt",
-  "A": 3.098721378005347,
-  "B": -2.375027344041583,
+  "A": 3.0248462891404553,
+  "B": -2.378629153504144,
   "n_fit": 27,
   "reference": "graded_reference_v2",
   "fit_on": "exact-correct",
-  "code_version": "48bd0b2+dirty",
-  "date": "2026-07-12"
+  "code_version": "f0ea0f8+dirty",
+  "date": "2026-07-13"
 }

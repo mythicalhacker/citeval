@@ -36,21 +36,24 @@ RESULTS_CAL30 = CAL / "results_cal30.jsonl"
 REF_V2 = CAL / "graded_reference_v2.jsonl"
 THRESHOLDS = CAL / "gate_thresholds.json"
 
-# The frozen cal30 baseline (the live scorecard_cal30_check numbers) — the offline path must
-# reproduce these to the last digit or a metric-drift regression has slipped in.
+# The frozen cal30 baseline — the offline path must reproduce these to the last digit or a
+# metric-drift regression has slipped in. Reseeded at thresholds_version 3 (code f99d21f) after the
+# C4 direction-reversal re-grade: the confident-wrong tail cleared (Ce11 no longer contradicted; A27
+# now exact), graded_adjacent -> 1.0, qwk -> 0.895, recal_loo_ece -> 0.079; and Bs09 (previously a
+# grounding error) now grades, so n_errors 1 -> 0 and n 29 -> 30.
 EXPECT = {
     "retraction_prf": (1.0, 1.0, 1.0),
     "scope_prf": (1.0, 1.0, 1.0),          # Bs22/Bp01 reconciled to the deployed live Opus-C3 verdicts
     "control_specificity": (9, 9),
-    "overall_accuracy": (29, 29),
-    "n": 29, "n_errors": 1,
+    "overall_accuracy": (30, 30),
+    "n": 30, "n_errors": 0,
     "accuracy_exact": 16 / 27,
-    "accuracy_adjacent": 23 / 27,
-    "qwk": 0.6949152542372881,
-    "ece_equal_mass": 0.2963037037037037,
-    "coverage": 1.0,
-    "recal_loo_ece": 0.15670247660992453,
-    "recal_auroc": 0.6846590909090909,
+    "accuracy_adjacent": 1.0,
+    "qwk": 0.8950900741787354,
+    "ece_equal_mass": 0.3174814814814815,
+    "coverage": 0.9643,
+    "recal_loo_ece": 0.07872545125114414,
+    "recal_auroc": 0.6363636363636364,
     "recal_n_fit": 27,
 }
 
@@ -264,14 +267,15 @@ class GatePassFailTests(unittest.TestCase):
         self.assertTrue(all(not g.breach for g in gr.gaps if g.kind.startswith("confident-adjacent")))
 
     def test_committed_confident_wrong_split(self):
-        # On the committed cal30 data: genuine errors {A27, Ce11}; adjacent {A10, Bp01, Bs07, Ch03}.
+        # On the committed cal30 data (post C4 direction-reversal fix): NO genuine confident-wrong
+        # errors remain; the confident cases are all adjacent (distance 1).
         res, gr = E.run(RESULTS_CAL30, REF_V2, THRESHOLDS)
-        self.assertEqual({c["case_id"] for c in gr.confident_wrong}, {"A27", "Ce11"})
+        self.assertEqual({c["case_id"] for c in gr.confident_wrong}, set())   # tail cleared
         self.assertEqual({c["case_id"] for c in gr.confident_adjacent},
-                         {"A10", "Bp01", "Bs07", "Ch03"})
-        self.assertTrue(all(c["distance"] >= 2 for c in gr.confident_wrong))
+                         {"A09", "A10", "A13", "A17", "Bp01", "Bs07", "Ch03", "Ch10"})
+        self.assertTrue(all(c["distance"] >= 2 for c in gr.confident_wrong))  # vacuously true (empty)
         self.assertTrue(all(c["distance"] == 1 for c in gr.confident_adjacent))
-        self.assertTrue(gr.passed)                        # genuine set == baseline → no new breach
+        self.assertTrue(gr.passed)                        # genuine set empty == baseline → no breach
 
     def test_objective_absent_row_excluded_like_live(self):
         # Finding #1: a resumed-then-objective-failed durable row (pred_retraction=None, status GRADED)
