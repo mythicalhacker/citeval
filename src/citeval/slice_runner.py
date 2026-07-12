@@ -18,7 +18,7 @@ import json
 import os
 from pathlib import Path
 
-from .adjudicator import adjudicate
+from .adjudicator import AdjudicationConfig, adjudicate
 from .adjudicator_stub import adjudicate_stub
 from .claim_scope import parse_claim_scope
 from .contracts import CitedIdentifier, ClaimUnit
@@ -40,6 +40,14 @@ def graded_enabled(flag: bool = False) -> bool:
     (0/false/no/off/none) stays on the offline stub path. The graded path constructs a live
     Opus 4.8 client, so an intent-to-disable value must not silently enable it."""
     return bool(flag) or os.environ.get("CITEVAL_GRADED", "").strip().lower() not in _FALSEY
+
+
+def recalibrate_enabled(flag: bool = False) -> bool:
+    """Post-hoc RB3 recalibration is on when `--recalibrate` is passed OR `CITEVAL_RECALIBRATE` is set
+    truthy. Fails CLOSED (same off-spellings as `graded_enabled`): recalibration is opt-in and never
+    auto-enabled — and even when ON it still declines a missing/unfit map (see
+    `recalibrate.resolve_recalibration`)."""
+    return bool(flag) or os.environ.get("CITEVAL_RECALIBRATE", "").strip().lower() not in _FALSEY
 
 
 def run_slice(claim_text: str, cited_pmid: str | None = None,
@@ -110,10 +118,25 @@ def main() -> None:
     ap.add_argument("--demo", action="store_true", help="run A01,B01,C01 with verification")
     ap.add_argument("--graded", action="store_true",
                     help="use the graded adversarial C4 (needs ANTHROPIC_API_KEY); else the stub")
+    ap.add_argument("--recalibrate", action="store_true",
+                    help="apply the fitted RB3 Platt confidence map (opt-in; needs --graded; "
+                         "fails closed if no fitted map). Or set CITEVAL_RECALIBRATE=1")
+    ap.add_argument("--recalibration-map", dest="recalibration_map",
+                    help="path to calibration_map.json (default outputs/calibration_map.json)")
     ap.add_argument("--out", default=str(DEFAULT_OUT))
     args = ap.parse_args()
     out_dir = Path(args.out)
     graded = graded_enabled(args.graded)
+
+    # RB3 post-hoc recalibration — opt-in, fails closed. Only meaningful on the graded path (the stub
+    # ignores config); the resolver declines a missing/unfit map so it is never auto-enabled.
+    from .recalibrate import DEFAULT_MAP_PATH, resolve_recalibration
+    recal_fn, recal_note = resolve_recalibration(
+        graded and recalibrate_enabled(args.recalibrate),
+        args.recalibration_map or DEFAULT_MAP_PATH)
+    if recal_note:
+        print(recal_note)
+    recal_config = AdjudicationConfig(recalibration=recal_fn) if recal_fn is not None else None
 
     if args.demo:
         cases = _load_cases()
@@ -123,7 +146,8 @@ def main() -> None:
         all_ok = True
         for cid in ["A01", "B01", "C01"]:
             c = cases[cid]
-            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=graded)
+            r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=graded,
+                          config=recal_config)
             _write(out_dir, cid, r)
             g = r["grounded"]
             # grounding sanity: all three cases carry organism MeSH; empty means a
@@ -148,7 +172,7 @@ def main() -> None:
         claim, pmid = args.claim, args.pmid
     if not claim or not (pmid or args.doi):
         ap.error("provide --case, or --claim with --pmid/--doi, or --demo")
-    r = run_slice(claim, cited_pmid=pmid, cited_doi=args.doi, graded=graded)
+    r = run_slice(claim, cited_pmid=pmid, cited_doi=args.doi, graded=graded, config=recal_config)
     path = _write(out_dir, (args.case or pmid), r)
     print(r["report_md"])
     print(f"\n[written to {path}]")

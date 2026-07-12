@@ -509,7 +509,7 @@ def _round_hook(i: int, n: int, cid: str):
 def score(cases: list[dict], graded: bool = False, references: dict | None = None, *,
           out_dir: str | Path | None = None, limit: int | None = None, fresh: bool = False,
           progress: bool = False, verbose: bool = False, client=None, config=None,
-          version: str = "") -> dict:
+          version: str = "", recalibration=None) -> dict:
     """Score the corpus. When `graded`, per-case predictions are appended INCREMENTALLY to
     `<out_dir>/graded_predictions.jsonl` (flushed) so a Ctrl-C never loses completed cases; on the
     next run those case_ids are SKIPPED (resume) unless `fresh`. `limit` scores only the first N
@@ -519,7 +519,12 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
 
     Per-case failure isolation (WO-C4 §2): a grounding/network error on ONE case is caught, logged,
     recorded as a status=ERROR prediction row (excluded from every metric denominator — an infra
-    error is not an abstention), and the run CONTINUES. A single bad PMID never aborts a long run."""
+    error is not an abstention), and the run CONTINUES. A single bad PMID never aborts a long run.
+
+    `recalibration` (RB3, opt-in) is the fitted `a_exact -> P(correct)` Platt map; when supplied it is
+    attached to every graded case's config so `evidence.calibration.note` carries the calibrated
+    confidence. None (default) leaves the emitted confidence untouched — the map is NEVER auto-enabled
+    (see `recalibrate.resolve_recalibration` / the `--recalibrate` flag)."""
     references = references or {}
     if limit is not None:
         cases = cases[:limit]
@@ -567,8 +572,14 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
             if progress:
                 _log(f"[{i}/{n}] {cid} start" + (" (resumed — reuse stored prediction)" if resumed else ""))
             case_config = config
-            if use_graded and verbose:
-                case_config = replace(config or AdjudicationConfig(), on_round=_round_hook(i, n, cid))
+            if use_graded:
+                overrides = {}
+                if verbose:
+                    overrides["on_round"] = _round_hook(i, n, cid)
+                if recalibration is not None:   # RB3 opt-in map (fills evidence.calibration.note)
+                    overrides["recalibration"] = recalibration
+                if overrides:
+                    case_config = replace(config or AdjudicationConfig(), **overrides)
             t0 = time.perf_counter()
             try:
                 r = run_slice(c["claim_text"], cited_pmid=c["cited_pmid"], graded=use_graded,
@@ -818,6 +829,11 @@ def main() -> None:
                     help="run the graded adversarial C4 (needs ANTHROPIC_API_KEY) + calibration")
     ap.add_argument("--graded-reference", dest="graded_reference",
                     help="human substantive_grade sidecar (jsonl/json keyed by case_id)")
+    ap.add_argument("--recalibrate", action="store_true",
+                    help="apply the fitted RB3 Platt confidence map (opt-in; fails closed if no "
+                         "fitted map exists). Or set CITEVAL_RECALIBRATE=1")
+    ap.add_argument("--recalibration-map", dest="recalibration_map",
+                    help="path to calibration_map.json (default outputs/calibration_map.json)")
     ap.add_argument("--emit-calibration-sample", dest="emit_sample", nargs="?", type=int,
                     const=30, help="write a stratified N-case (default 30) human spot-check manifest")
     ap.add_argument("--limit", type=int, help="score only the first N cases (smoke test)")
@@ -851,8 +867,20 @@ def main() -> None:
     graded = graded_enabled(args.graded)
     references = load_graded_references(cases, args.graded_reference)
     verbose = args.verbose or os.environ.get("CITEVAL_PROGRESS", "").strip().lower() not in ("", "0", "false", "no", "off", "none")
+
+    # RB3 post-hoc recalibration — opt-in, fails closed. Only applies to the graded path; the resolver
+    # declines a missing/unfit map so the emitted confidence is never silently rescaled by a bad map.
+    from .recalibrate import DEFAULT_MAP_PATH, resolve_recalibration
+    from .slice_runner import recalibrate_enabled
+    recal_fn, recal_note = resolve_recalibration(
+        graded and recalibrate_enabled(args.recalibrate),
+        args.recalibration_map or DEFAULT_MAP_PATH)
+    if recal_note:
+        _log(recal_note)
+
     res = score(cases, graded=graded, references=references, out_dir=out, limit=args.limit,
-                fresh=args.fresh, progress=graded, verbose=verbose, version=version)
+                fresh=args.fresh, progress=graded, verbose=verbose, version=version,
+                recalibration=recal_fn)
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))

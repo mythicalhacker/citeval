@@ -479,5 +479,33 @@ class VersionStampTests(unittest.TestCase):
         self.assertIn("cafef00d", S.render_scorecard(res))
 
 
+class RecalibrationWiringTests(unittest.TestCase):
+    """WO §5: `score(recalibration=fn)` attaches the RB3 map to EVERY graded case's config so the
+    live adjudicator fills evidence.calibration.note; default None leaves config untouched."""
+
+    def _run_and_capture_config(self, recalibration):
+        seen: list = []
+
+        def _slice(claim_text, cited_pmid=None, cited_doi=None, *, graded=False, client=None,
+                   config=None):
+            seen.append(getattr(config, "recalibration", None))
+            return {"verdict": _fake_verdict(cited_pmid, "fully-supported", 0.9, "GRADED"),
+                    "grounded": _fake_grounded(cited_pmid)}
+
+        cases = [{"case_id": "R0", "cited_pmid": "0", "claim_text": "c",
+                  "ground_truth_label": "SUPPORTED"}]
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(S, "run_slice", _slice):
+            S.score(cases, graded=True, out_dir=d, version="v", recalibration=recalibration)
+        return seen
+
+    def test_recalibration_is_threaded_into_the_graded_config(self):
+        fn = lambda x: x * 0.5
+        self.assertEqual(self._run_and_capture_config(fn), [fn])   # exact map object reaches the case
+
+    def test_default_leaves_config_recalibration_unset(self):
+        # No recalibration passed -> the per-case config carries no map (None), unchanged behavior.
+        self.assertEqual(self._run_and_capture_config(None), [None])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
