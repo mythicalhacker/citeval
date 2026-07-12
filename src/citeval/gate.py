@@ -64,17 +64,20 @@ def extract_metrics(res: dict) -> dict:
 
 
 def confident_wrong_cases(res: dict, tau: float) -> list[dict]:
-    """GRADED cases the model was CONFIDENT on (a_exact ≥ tau) yet got WRONG (grade ≠ ordinal
-    reference). These are the calibration danger cases — surfaced every run."""
+    """GRADED cases the model was CONFIDENT on (a_exact ≥ tau) yet DISAGREED with the ordinal
+    reference (grade ≠ ref), tagged with the ordinal `distance` = |grade_idx − ref_idx|. The caller
+    splits by distance: distance ≥ 2 are GENUINE errors (the gap); distance == 1 is confident-but-
+    adjacent — not an error on a 6-level scale, reported as info only."""
     out = []
     for r in res.get("graded_records", []):
         conf = r.get("confidence")
         ref = r.get("ref_grade")
+        grade = r.get("grade")
         if (r.get("status") == "GRADED" and isinstance(conf, (int, float)) and conf >= tau
-                and ref in ORDINAL_INDEX and r.get("grade") != ref):
-            out.append({"case_id": r.get("case_id"), "grade": r.get("grade"),
-                        "ref_grade": ref, "confidence": conf})
-    return sorted(out, key=lambda d: (-(d["confidence"] or 0), d["case_id"] or ""))
+                and ref in ORDINAL_INDEX and grade in ORDINAL_INDEX and grade != ref):
+            out.append({"case_id": r.get("case_id"), "grade": grade, "ref_grade": ref,
+                        "confidence": conf, "distance": abs(ORDINAL_INDEX[grade] - ORDINAL_INDEX[ref])})
+    return sorted(out, key=lambda d: (-d["distance"], -(d["confidence"] or 0), d["case_id"] or ""))
 
 
 @dataclass
@@ -98,11 +101,12 @@ class Gap:
 class GateResult:
     checks: list[Check]
     gaps: list[Gap]
-    confident_wrong: list[dict]
+    confident_wrong: list[dict]           # GENUINE errors (ordinal distance ≥ min_distance)
     metrics: dict
     reference_version: str = ""
     thresholds_version: str = ""
     breaches: list[str] = field(default_factory=list)
+    confident_adjacent: list[dict] = field(default_factory=list)  # distance == 1, info only
 
     @property
     def passed(self) -> bool:
@@ -173,22 +177,33 @@ def evaluate_gate(res: dict, thresholds: dict) -> GateResult:
         gaps.append(Gap("ece", f"recal-LOO ECE {ece:.4f} vs baseline {ece_base:.4f}"
                         + (" — RISE" if rose else " — no rise"), breach=False))
 
-    # 5) Confident-wrong cases; a NEW one (not in the baseline set) is a breach.
-    cw = confident_wrong_cases(res, tau)
+    # 5) Confident-wrong cases. A GENUINE error is confident (a_exact ≥ tau) AND off by ≥ min_distance
+    #    on the ordinal (default 2): adjacency on a 6-level scale is not an error, so distance-1 cases
+    #    are reported as INFO, never a gap. A NEW genuine error (not in the baseline set) is a breach.
+    min_dist = thresholds.get("confident_wrong_min_distance", 2)
+    cw_all = confident_wrong_cases(res, tau)
+    cw_errors = [c for c in cw_all if c["distance"] >= min_dist]
+    cw_adjacent = [c for c in cw_all if c["distance"] < min_dist]
     baseline_cw = set(baseline.get("confident_wrong_case_ids", []))
-    new_cw = [c for c in cw if c["case_id"] not in baseline_cw]
-    if cw:
-        detail = ", ".join(f"{c['case_id']}[{c['grade']}≠{c['ref_grade']}@{c['confidence']:.2f}]"
-                           for c in cw)
-        gaps.append(Gap("confident-wrong", f"a_exact≥{tau}: {detail}  "
-                        f"({len(cw)} total, {len(new_cw)} new vs baseline)", breach=bool(new_cw)))
-    else:
-        gaps.append(Gap("confident-wrong", f"none at a_exact≥{tau}", breach=False))
-    if new_cw:
-        breaches.append(f"new confident-wrong case(s): {', '.join(c['case_id'] for c in new_cw)}")
+    new_cw = [c for c in cw_errors if c["case_id"] not in baseline_cw]
 
-    return GateResult(checks=checks, gaps=gaps, confident_wrong=cw, metrics=metrics,
-                      reference_version=thresholds.get("reference_version", ""),
+    def _fmt_cw(c):
+        return f"{c['case_id']}[{c['grade']}≠{c['ref_grade']} d={c['distance']}@{c['confidence']:.2f}]"
+
+    if cw_errors:
+        gaps.append(Gap("confident-wrong", f"a_exact≥{tau} & ordinal-distance≥{min_dist} (genuine): "
+                        f"{', '.join(_fmt_cw(c) for c in cw_errors)}  "
+                        f"({len(cw_errors)} total, {len(new_cw)} new vs baseline)", breach=bool(new_cw)))
+    else:
+        gaps.append(Gap("confident-wrong", f"none at a_exact≥{tau} & distance≥{min_dist}", breach=False))
+    if cw_adjacent:
+        gaps.append(Gap("confident-adjacent (info)", f"a_exact≥{tau} & distance<{min_dist} — adjacent, "
+                        f"NOT an error: {', '.join(_fmt_cw(c) for c in cw_adjacent)}", breach=False))
+    if new_cw:
+        breaches.append(f"new confident-wrong (genuine) case(s): {', '.join(c['case_id'] for c in new_cw)}")
+
+    return GateResult(checks=checks, gaps=gaps, confident_wrong=cw_errors, confident_adjacent=cw_adjacent,
+                      metrics=metrics, reference_version=thresholds.get("reference_version", ""),
                       thresholds_version=str(thresholds.get("thresholds_version", "")),
                       breaches=breaches)
 

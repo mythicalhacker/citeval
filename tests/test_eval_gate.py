@@ -40,9 +40,9 @@ THRESHOLDS = CAL / "gate_thresholds.json"
 # reproduce these to the last digit or a metric-drift regression has slipped in.
 EXPECT = {
     "retraction_prf": (1.0, 1.0, 1.0),
-    "scope_prf": (1.0, 0.8, 1.0),
+    "scope_prf": (1.0, 1.0, 1.0),          # Bs22/Bp01 reconciled to the deployed live Opus-C3 verdicts
     "control_specificity": (9, 9),
-    "overall_accuracy": (27, 29),
+    "overall_accuracy": (29, 29),
     "n": 29, "n_errors": 1,
     "accuracy_exact": 16 / 27,
     "accuracy_adjacent": 23 / 27,
@@ -82,13 +82,15 @@ def refs_from(rows):
     return {r["case_id"]: r["ref_grade"] for r in rows if r.get("ref_grade")}
 
 
-def thresholds_from(res, tau=0.85):
+def thresholds_from(res, tau=0.85, min_dist=2):
     """A thresholds dict whose baseline == the measured metrics of `res` (so no spurious regression),
-    with the work-order floors. Lets a fixture's OWN good run define its zero-regression baseline."""
+    with the work-order floors. Lets a fixture's OWN good run define its zero-regression baseline.
+    The baseline confident-wrong set is GENUINE errors only (distance >= min_dist)."""
     m = G.extract_metrics(res)
-    cw = [c["case_id"] for c in G.confident_wrong_cases(res, tau)]
+    cw = [c["case_id"] for c in G.confident_wrong_cases(res, tau) if c["distance"] >= min_dist]
     return {
         "thresholds_version": 0, "reference_version": "synthetic", "confident_wrong_tau": tau,
+        "confident_wrong_min_distance": min_dist,
         "thresholds": {
             "retraction_precision": {"min": 0.95}, "retraction_recall": {"min": 0.95},
             "scope_precision": {"min": 0.95}, "scope_recall": {"min": 0.80},
@@ -167,6 +169,17 @@ class OfflineReproductionTests(unittest.TestCase):
             else:
                 self.assertEqual(r["retraction_verdict"], "NOT_RETRACTED")
 
+    def test_scope_reconciled_to_live_opus_c3(self):
+        # Refinement 1: Bs22 (species) and Bp01 (population) carry the DEPLOYED live SCOPE_MISMATCH,
+        # so offline scope recall is 1.0 (not the lexical-stub 0.80).
+        rows = {r["case_id"]: r for r in S._load_results(RESULTS_CAL30)}
+        self.assertTrue(rows["Bs22"]["pred_scope"])
+        self.assertEqual(rows["Bs22"]["species_scope_verdict"], "SCOPE_MISMATCH")
+        self.assertTrue(rows["Bp01"]["pred_scope"])
+        self.assertEqual(rows["Bp01"]["population_scope_verdict"], "SCOPE_MISMATCH")
+        self.assertEqual(self.res["scope"]["prf"], (1.0, 1.0, 1.0))
+        self.assertEqual(self.res["scope"]["missed"], [])
+
 
 class DeterminismAndPurityTests(unittest.TestCase):
     def test_deterministic_across_runs(self):
@@ -224,16 +237,41 @@ class GatePassFailTests(unittest.TestCase):
         self.assertFalse(gr.passed)
         self.assertFalse(next(c for c in gr.checks if c.metric == "graded_exact").passed)
 
-    def test_new_confident_wrong_case_is_a_breach(self):
+    def test_new_confident_wrong_genuine_is_a_breach(self):
         base = S.score_from_predictions(PASS_ROWS, refs_from(PASS_ROWS))
-        thr = thresholds_from(base)                   # baseline confident-wrong set is empty here
+        thr = thresholds_from(base)                   # baseline genuine-error set is empty here
         bad_rows = copy.deepcopy(PASS_ROWS)
         bad_rows[0]["confidence"] = 0.99              # confident…
-        bad_rows[0]["grade"] = "contradicted"         # …and wrong vs its fully-supported ref
+        bad_rows[0]["grade"] = "contradicted"         # …and far-wrong (distance 5) vs fully-supported
         res = S.score_from_predictions(bad_rows, refs_from(bad_rows))
         gr = G.evaluate_gate(res, thr)
         self.assertFalse(gr.passed)
         self.assertTrue(any(g.kind == "confident-wrong" and g.breach for g in gr.gaps))
+        self.assertEqual([c["case_id"] for c in gr.confident_wrong], ["R1"])
+
+    def test_new_confident_adjacent_is_not_a_breach(self):
+        # Refinement 2: confident but ONLY adjacent (distance 1) is info, never a breach.
+        base = S.score_from_predictions(PASS_ROWS, refs_from(PASS_ROWS))
+        thr = thresholds_from(base)
+        rows = copy.deepcopy(PASS_ROWS)
+        rows[0]["confidence"] = 0.99
+        rows[0]["grade"] = "supported-with-overreach"   # ref fully-supported → distance 1 (adjacent)
+        res = S.score_from_predictions(rows, refs_from(rows))
+        gr = G.evaluate_gate(res, thr)
+        self.assertTrue(gr.passed)                        # adjacency is not an error
+        self.assertEqual([c["case_id"] for c in gr.confident_adjacent], ["R1"])
+        self.assertEqual(gr.confident_wrong, [])
+        self.assertTrue(all(not g.breach for g in gr.gaps if g.kind.startswith("confident-adjacent")))
+
+    def test_committed_confident_wrong_split(self):
+        # On the committed cal30 data: genuine errors {A27, Ce11}; adjacent {A10, Bp01, Bs07, Ch03}.
+        res, gr = E.run(RESULTS_CAL30, REF_V2, THRESHOLDS)
+        self.assertEqual({c["case_id"] for c in gr.confident_wrong}, {"A27", "Ce11"})
+        self.assertEqual({c["case_id"] for c in gr.confident_adjacent},
+                         {"A10", "Bp01", "Bs07", "Ch03"})
+        self.assertTrue(all(c["distance"] >= 2 for c in gr.confident_wrong))
+        self.assertTrue(all(c["distance"] == 1 for c in gr.confident_adjacent))
+        self.assertTrue(gr.passed)                        # genuine set == baseline → no new breach
 
     def test_objective_absent_row_excluded_like_live(self):
         # Finding #1: a resumed-then-objective-failed durable row (pred_retraction=None, status GRADED)

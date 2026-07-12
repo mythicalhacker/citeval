@@ -37,6 +37,21 @@ def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+# ONE-TIME scope reconciliation. results_cal30.jsonl was regenerated from PRE-PERSIST predictions
+# that carried only the LEXICAL C3-lite scope verdict (CLAIM_SCOPE_UNSTATED → pred_scope=False), which
+# MISSED Bs22 and Bp01. The DEPLOYED live Opus-C3 run flagged BOTH as SCOPE_MISMATCH (real scope recall
+# 1.0 — see the live scorecard's per-case table): Bs22 on the species axis, Bp01 on the population
+# axis. Back those live verdicts into the backfill so the offline gate reflects the DEPLOYED system.
+# Going forward, live graded runs persist the live scope verdict natively (score() writes each axis
+# verdict into `rows`), so this override applies ONLY to the historical cal30 backfill.
+_LIVE_SCOPE_OVERRIDES = {
+    "Bs22": {"axis": "species_verdict", "verdict": "SCOPE_MISMATCH",
+             "overall": "CLAIM NOT SUPPORTED (species scope mismatch)"},
+    "Bp01": {"axis": "population_verdict", "verdict": "SCOPE_MISMATCH",
+             "overall": "CLAIM NOT SUPPORTED (population scope mismatch)"},
+}
+
+
 def _retraction_verdict(row: dict) -> str | None:
     """Reconstruct the retraction-axis verdict string from the run's RECORDED per-case `overall`
     rollup + the metadata-grounded pred_retraction boolean — NOT fabricated (the pre-enrichment
@@ -86,7 +101,16 @@ def regenerate(predictions_path: Path, scorecard_path: Path, corpus_path: Path,
     # the recorded `overall`); species_verdict is already recorded. population_verdict is left null —
     # it needs MeSH population tags the pre-enrichment scorecard did not persist, so per invariant #3
     # it is FLAGGED (null), never fabricated. Live runs going forward record all three directly.
-    obj_rows = [dict(row, retraction_verdict=_retraction_verdict(row)) for row in sc.get("rows", [])]
+    # Then apply the one-time live-scope reconciliation (Bs22 species / Bp01 population SCOPE_MISMATCH).
+    obj_rows = []
+    for row in sc.get("rows", []):
+        row = dict(row, retraction_verdict=_retraction_verdict(row))
+        ov = _LIVE_SCOPE_OVERRIDES.get(row.get("case_id"))
+        if ov:
+            row[ov["axis"]] = ov["verdict"]
+            row["pred_scope"] = True
+            row["overall"] = ov["overall"]
+        obj_rows.append(row)
 
     # One code_version stamp for the whole file: the dominant one across the committed prediction rows
     # (the code that produced this run), falling back to the scorecard's stamp.
