@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "Ce03",
+    "c4": "fully-supported",
+    "c4_conf": 1.0,
+    "ext_ref": "unsupported-for-the-claim",
+    "ext_ref_prov": "llm-fulltext-claude-science",
+    "independent": "N/A - non-substantiating",
+    "ind_rationale": "Paper appraises evidence on patient safety benefits but does not substantiate the specific claim that immunological advantages provide indirect patient protection; likely a background/passing citation.",
+    "depth": "fulltext"
+  },
+  {
+    "case_id": "A11",
+    "c4": "supported-with-overreach",
+    "c4_conf": 1.0,
+    "ext_ref": "unsupported-for-the-claim",
+    "ext_ref_prov": "llm-abstract-only-claude-science",
+    "independent": "supported-with-overreach",
+    "ind_rationale": "Paper supports higher postmenopausal CV risk in hyperandrogenic PCOS phenotype, but does not directly compare classical vs non-classical phenotypes as the claim asserts.",
+    "depth": "abstract"
+  },
+  {
+    "case_id": "Bs03",
+    "c4": "supported-with-overreach",
+    "c4_conf": 1.0,
+    "ext_ref": "unsupported-for-the-claim",
+    "ext_ref_prov": "llm-abstract-only-claude-science",
+    "independent": "partially-supported",
+    "ind_rationale": "Paper shows kefir improves infected wound healing, but does not attribute effect to polysaccharides or innate immune stimulation as claimed.",
+    "depth": "abstract"
+  },
+  {
+    "case_id": "A05",
+    "c4": "partially-supported",
+    "c4_conf": 1.0,
+    "ext_ref": "unsupported-for-the-claim",
+    "ext_ref_prov": "llm-abstract-only-claude-science",
+    "independent": "partially-supported",
+    "ind_rationale": "Paper supports 5-HT3-dependent vagal signaling from luminal factors, but studies carbohydrates/osmolarity not lipids, involves no CCK1 mechanism, satiety, or human food-intake data.",
+    "depth": "abstract"
+  },
+  {
+    "case_id": "Bp03",
+    "c4": "unsupported-for-the-claim",
+    "c4_conf": 1.0,
+    "ext_ref": "partially-supported",
+    "ext_ref_prov": "llm-fulltext-claude-science",
+    "independent": "N/A - non-substantiating",
+    "ind_rationale": "Paper concerns obesity and female reproduction, with only general mention of obesity-induced inflammation; it does not substantiate leptin causing immune disorders in obese individuals.",
+    "depth": "fulltext"
+  },
+  {
+    "case_id": "Bs07",
+    "c4": "partially-supported",
+    "c4_conf": 1.0,
+    "ext_ref": "contradicted",
+    "ext_ref_prov": "llm-fulltext-claude-science",
+    "independent": "contradicted",
+    "ind_rationale": "Paper shows HDL decreased (not increased) with treatment, and TG/LDL reductions were non-significant, opposite to the claim of increased HDL.",
+    "depth": "fulltext"
+  }
+]

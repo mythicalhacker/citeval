@@ -1098,6 +1098,11 @@ def main() -> None:
     ap.add_argument("--limit", type=int, help="score only the first N cases (smoke test)")
     ap.add_argument("--only", help="comma-separated case_ids to score (e.g. 'Ce11,A27'); the rest "
                     "of the corpus is skipped. Useful for a targeted live re-run of specific cases.")
+    ap.add_argument("--objective-only", dest="objective_only", action="store_true",
+                    help="run C1->C2->C3 (live Opus-4.8 claim-scope when ANTHROPIC_API_KEY is set, "
+                         "else the lexical fallback) + the objective axes only, SKIPPING the expensive "
+                         "C4 adversarial grade. Reports retraction/scope/control; substantive stays "
+                         "NOT_ADJUDICATED. Cheap out-of-sample objective scorecard.")
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any existing graded_predictions.jsonl and recompute from scratch")
     ap.add_argument("-v", "--verbose", action="store_true",
@@ -1151,6 +1156,13 @@ def main() -> None:
         return
 
     graded = graded_enabled(args.graded)
+    if args.objective_only:
+        graded = False   # C1->C2->C3 + objective axes only; the C4 adversarial grade is skipped
+        _log("[objective-only] C1->C2->C3 + objective axes; SKIPPING the C4 adversarial grade")
+    # Name the C3 claim-scope path actually in effect, so a scope number is never mistaken for the
+    # other path's (the scorecard's static scope-miss note does not distinguish them).
+    _log("[C3] claim-scope path: " + ("Opus-4.8 (model path)" if os.environ.get("ANTHROPIC_API_KEY")
+                                       else "lexical fallback (no ANTHROPIC_API_KEY)"))
     references = load_graded_references(cases, args.graded_reference)
     verbose = args.verbose or os.environ.get("CITEVAL_PROGRESS", "").strip().lower() not in ("", "0", "false", "no", "off", "none")
 
