@@ -42,6 +42,10 @@ from .slice_runner import EVAL_PATH, graded_enabled, run_slice
 
 WORKSPACE = Path(__file__).resolve().parents[2]
 OUT_DIR = WORKSPACE / "outputs" / "scorecard"
+# Durable, COMPLETE-verdict per-case files (one JSON line per case: objective axes + graded
+# prediction + code_version) — the deterministic input for offline scoring (`--from-predictions`).
+# Ephemeral / gitignored; the committed copy the gate runs against lives in corpus/calibration/.
+RESULTS_DIR = WORKSPACE / "outputs" / "results"
 CORPUS_OBJECTIVE = WORKSPACE / "corpus" / "corpus_objective.jsonl"
 
 # The 3 corpus cases whose cited papers are actually retracted (per RetractionWatch × NCBI)
@@ -506,10 +510,118 @@ def _round_hook(i: int, n: int, cid: str):
     return _hook
 
 
+# ==================================================================================
+# Aggregation — PURE. Both the live pipeline (`score`) and the offline recompute
+# (`score_from_predictions`) call THIS SAME function on collected per-case rows, so the
+# offline scorecard is bit-for-bit the live scorecard (no metric drift possible).
+# ==================================================================================
+def aggregate_metrics(rows: list[dict], graded_records: list[dict], errors: list[dict], *,
+                      graded: bool, version: str) -> dict:
+    """Roll per-case objective `rows` (+ graded_records when graded) up into the scorecard dict.
+
+    `rows`   : one dict per NON-error case with keys gt / pred_retraction / pred_scope / overall
+               / species_verdict / case_id (the objective axes).
+    `graded_records` : one dict per non-error case with case_id / status / grade / confidence /
+               ref_grade / evidence_depth (the graded substantive axis).
+    `errors` : status=ERROR rows (infra/network) — excluded from every metric denominator.
+    """
+    # Retraction detection: positives = RETRACTED cases; negatives = the rest.
+    r_tp = sum(x["gt"] == "RETRACTED" and x["pred_retraction"] for x in rows)
+    r_fn = sum(x["gt"] == "RETRACTED" and not x["pred_retraction"] for x in rows)
+    r_fp = sum(x["gt"] != "RETRACTED" and x["pred_retraction"] for x in rows)
+    r_tn = sum(x["gt"] != "RETRACTED" and not x["pred_retraction"] for x in rows)
+
+    # Scope detection: positives = SCOPE_MISMATCH; negatives = SUPPORTED controls.
+    # A-cases excluded (their labeled axis is retraction, not scope) but reported observationally.
+    s_rows = [x for x in rows if x["gt"] in ("SCOPE_MISMATCH", "SUPPORTED")]
+    s_tp = sum(x["gt"] == "SCOPE_MISMATCH" and x["pred_scope"] for x in s_rows)
+    s_fn = sum(x["gt"] == "SCOPE_MISMATCH" and not x["pred_scope"] for x in s_rows)
+    s_fp = sum(x["gt"] == "SUPPORTED" and x["pred_scope"] for x in s_rows)
+    s_tn = sum(x["gt"] == "SUPPORTED" and not x["pred_scope"] for x in s_rows)
+
+    # Control specificity: SUPPORTED cases clean on BOTH axes.
+    controls = [x for x in rows if x["gt"] == "SUPPORTED"]
+    clean = sum(not x["pred_retraction"] and not x["pred_scope"] for x in controls)
+
+    # Overall "correct finding" per case.
+    def correct(x):
+        if x["gt"] == "RETRACTED":
+            return x["pred_retraction"]
+        if x["gt"] == "SCOPE_MISMATCH":
+            return x["pred_scope"]
+        return not x["pred_retraction"] and not x["pred_scope"]
+    n_correct = sum(correct(x) for x in rows)
+
+    a_scope_fp = [x["case_id"] for x in rows if x["gt"] == "RETRACTED" and x["pred_scope"]]
+
+    res = {
+        "n": len(rows), "rows": rows, "graded": graded,
+        "retraction": {"tp": r_tp, "fp": r_fp, "fn": r_fn, "tn": r_tn,
+                       "prf": _prf(r_tp, r_fp, r_fn, r_tn)},
+        "scope": {"tp": s_tp, "fp": s_fp, "fn": s_fn, "tn": s_tn,
+                  "prf": _prf(s_tp, s_fp, s_fn, s_tn),
+                  "missed": [x["case_id"] for x in s_rows
+                             if x["gt"] == "SCOPE_MISMATCH" and not x["pred_scope"]]},
+        "control_specificity": (clean, len(controls)),
+        "overall_accuracy": (n_correct, len(rows)),
+        "a_scope_observational": a_scope_fp,
+        "code_version": version,
+        "errors": errors,               # infra failures (grounding/network) — excluded from all metrics
+        "n_errors": len(errors),
+    }
+    if graded:
+        res["calibration"] = calibrate_graded(graded_records)
+        res["coverage_by_depth"] = coverage_by_depth(graded_records)
+        res["graded_records"] = graded_records
+    return res
+
+
+# The FROZEN durable-results field set (req #1). One flat JSON object per case; a strict superset of
+# the incremental graded_predictions.jsonl row, so `recalibrate.build_dataset` consumes it unchanged.
+DURABLE_FIELDS = ("case_id", "corpus", "code_version", "ground_truth_label", "pred_retraction",
+                  "pred_scope", "retraction_verdict", "species_scope_verdict",
+                  "population_scope_verdict", "overall", "status", "grade", "confidence",
+                  "ref_grade", "evidence_depth", "elapsed_s")
+
+
+def build_durable_rows(rows: list[dict], graded_records: list[dict], errors: list[dict], *,
+                       corpus: str, version: str, gt_by_case: dict | None = None) -> list[dict]:
+    """Join objective `rows` + `graded_records` (+ `errors`) by case_id into one COMPLETE-verdict
+    row per case (the durable results schema). ERROR cases are emitted as a minimal status=ERROR row
+    (they never completed the objective pipeline), so an offline reader can reconstruct n_errors."""
+    gt_by_case = gt_by_case or {}
+    obj = {x["case_id"]: x for x in rows}
+    grd = {r["case_id"]: r for r in graded_records}
+    out: list[dict] = []
+    for cid in dict.fromkeys([*(x["case_id"] for x in rows), *(r["case_id"] for r in graded_records)]):
+        o = obj.get(cid, {})
+        g = grd.get(cid, {})
+        out.append({
+            "case_id": cid, "corpus": corpus, "code_version": version,
+            "ground_truth_label": o.get("gt", gt_by_case.get(cid)),
+            "pred_retraction": o.get("pred_retraction"),
+            "pred_scope": o.get("pred_scope"),
+            "retraction_verdict": o.get("retraction_verdict"),
+            "species_scope_verdict": o.get("species_verdict"),
+            "population_scope_verdict": o.get("population_verdict"),
+            "overall": o.get("overall"),
+            "status": g.get("status"), "grade": g.get("grade"),
+            "confidence": g.get("confidence"), "ref_grade": g.get("ref_grade"),
+            "evidence_depth": g.get("evidence_depth"), "elapsed_s": g.get("elapsed_s"),
+        })
+    for e in errors:                                   # infra failures — recorded, excluded from metrics
+        out.append({"case_id": e.get("case_id"), "corpus": corpus,
+                    "code_version": e.get("code_version", version), "status": "ERROR",
+                    "error": e.get("error"), "elapsed_s": e.get("elapsed_s"),
+                    "ground_truth_label": gt_by_case.get(e.get("case_id"))})
+    return out
+
+
 def score(cases: list[dict], graded: bool = False, references: dict | None = None, *,
           out_dir: str | Path | None = None, limit: int | None = None, fresh: bool = False,
           progress: bool = False, verbose: bool = False, client=None, config=None,
-          version: str = "", recalibration=None) -> dict:
+          version: str = "", recalibration=None, corpus_label: str = "",
+          results_dir: str | Path | None = None) -> dict:
     """Score the corpus. When `graded`, per-case predictions are appended INCREMENTALLY to
     `<out_dir>/graded_predictions.jsonl` (flushed) so a Ctrl-C never loses completed cases; on the
     next run those case_ids are SKIPPED (resume) unless `fresh`. `limit` scores only the first N
@@ -613,6 +725,11 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
                 "pred_scope": pred["scope"],
                 "overall": v.overall,
                 "species_verdict": _axis(v, "species_scope").verdict,
+                # Raw per-axis verdict strings — not read by aggregate_metrics (which uses the derived
+                # pred_* booleans), carried only so the durable results row records EVERY objective
+                # axis verdict per the full-verdict contract (req #1).
+                "population_verdict": _axis(v, "population_scope").verdict,
+                "retraction_verdict": _axis(v, "retraction").verdict,
             })
             if graded:
                 if resumed:
@@ -640,54 +757,120 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
         if pred_f is not None:
             pred_f.close()
 
-    # Retraction detection: positives = RETRACTED cases; negatives = the rest.
-    r_tp = sum(x["gt"] == "RETRACTED" and x["pred_retraction"] for x in rows)
-    r_fn = sum(x["gt"] == "RETRACTED" and not x["pred_retraction"] for x in rows)
-    r_fp = sum(x["gt"] != "RETRACTED" and x["pred_retraction"] for x in rows)
-    r_tn = sum(x["gt"] != "RETRACTED" and not x["pred_retraction"] for x in rows)
+    # Durable, COMPLETE-verdict per-case results file (req #1) — the deterministic input for offline
+    # scoring. Written ONCE, after all cases complete (crash-safety for resume is already handled by
+    # the incremental graded_predictions.jsonl above); this file adds the objective axes + gt so the
+    # ENTIRE scorecard is recomputable offline with no pipeline/NCBI/key. Emitted only for a NAMED
+    # corpus (every real run via main() supplies one); an unlabeled ad-hoc score() call skips it.
+    if graded and corpus_label:
+        gt_by_case = {c.get("case_id", c.get("cited_pmid")): c.get("ground_truth_label") for c in cases}
+        durable = build_durable_rows(rows, graded_records, errors, corpus=corpus_label,
+                                     version=version, gt_by_case=gt_by_case)
+        rdir = Path(results_dir) if results_dir is not None else RESULTS_DIR
+        rdir.mkdir(parents=True, exist_ok=True)
+        fname = f"{corpus_label or 'corpus'}_{version or 'unknown'}.jsonl".replace("/", "_")
+        (rdir / fname).write_text(
+            "\n".join(json.dumps(d, ensure_ascii=False) for d in durable) + "\n")
+        _log(f"[results] {len(durable)} full-verdict row(s) → {rdir / fname} (offline-scoring input)")
 
-    # Scope detection: positives = SCOPE_MISMATCH; negatives = SUPPORTED controls.
-    # A-cases excluded (their labeled axis is retraction, not scope) but reported observationally.
-    s_rows = [x for x in rows if x["gt"] in ("SCOPE_MISMATCH", "SUPPORTED")]
-    s_tp = sum(x["gt"] == "SCOPE_MISMATCH" and x["pred_scope"] for x in s_rows)
-    s_fn = sum(x["gt"] == "SCOPE_MISMATCH" and not x["pred_scope"] for x in s_rows)
-    s_fp = sum(x["gt"] == "SUPPORTED" and x["pred_scope"] for x in s_rows)
-    s_tn = sum(x["gt"] == "SUPPORTED" and not x["pred_scope"] for x in s_rows)
+    return aggregate_metrics(rows, graded_records, errors, graded=graded, version=version)
 
-    # Control specificity: SUPPORTED cases clean on BOTH axes.
-    controls = [x for x in rows if x["gt"] == "SUPPORTED"]
-    clean = sum(not x["pred_retraction"] and not x["pred_scope"] for x in controls)
 
-    # Overall "correct finding" per case.
-    def correct(x):
-        if x["gt"] == "RETRACTED":
-            return x["pred_retraction"]
-        if x["gt"] == "SCOPE_MISMATCH":
-            return x["pred_scope"]
-        return not x["pred_retraction"] and not x["pred_scope"]
-    n_correct = sum(correct(x) for x in rows)
+# ==================================================================================
+# OFFLINE scoring (req #2) — recompute the ENTIRE scorecard from a durable results file.
+# PURE: no pipeline, no NCBI, no ANTHROPIC_API_KEY, no network. Deterministic, <1s.
+# ==================================================================================
+def load_reference_grades(path: str | Path) -> dict[str, str]:
+    """case_id -> ordinal reference grade, from a `--graded-reference` sidecar (jsonl or json).
+    Schema-tolerant on the grade column (`substantive_grade` / `grade` / `ref_grade` / …) — see
+    `recalibrate._REF_GRADE_KEYS`. Only grades on the RB1 ordinal are kept; the scorer never
+    fabricates a reference (anti-circularity: this file is the HUMAN/decider truth)."""
+    from .recalibrate import _REF_GRADE_KEYS
+    p = Path(path)
+    if p.suffix == ".jsonl":
+        rows = [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+    else:
+        raw = json.loads(p.read_text())
+        rows = raw if isinstance(raw, list) else raw.get("cases", raw.get("rows", []))
+    refs: dict[str, str] = {}
+    for r in rows:
+        cid = r.get("case_id")
+        grade = next((r[k] for k in _REF_GRADE_KEYS if r.get(k)), None)
+        if cid and isinstance(grade, str) and grade in ORDINAL_INDEX:
+            refs[cid] = grade
+    return refs
 
-    a_scope_fp = [x["case_id"] for x in rows if x["gt"] == "RETRACTED" and x["pred_scope"]]
 
-    res = {
-        "n": len(rows), "rows": rows, "graded": graded,
-        "retraction": {"tp": r_tp, "fp": r_fp, "fn": r_fn, "tn": r_tn,
-                       "prf": _prf(r_tp, r_fp, r_fn, r_tn)},
-        "scope": {"tp": s_tp, "fp": s_fp, "fn": s_fn, "tn": s_tn,
-                  "prf": _prf(s_tp, s_fp, s_fn, s_tn),
-                  "missed": [x["case_id"] for x in s_rows
-                             if x["gt"] == "SCOPE_MISMATCH" and not x["pred_scope"]]},
-        "control_specificity": (clean, len(controls)),
-        "overall_accuracy": (n_correct, len(rows)),
-        "a_scope_observational": a_scope_fp,
-        "code_version": version,
-        "errors": errors,               # infra failures (grounding/network) — excluded from all metrics
-        "n_errors": len(errors),
-    }
-    if graded:
-        res["calibration"] = calibrate_graded(graded_records)
-        res["coverage_by_depth"] = coverage_by_depth(graded_records)
-        res["graded_records"] = graded_records
+def compute_recal_block(graded_records: list[dict], references: dict[str, str]) -> dict:
+    """The honest recalibrated-LOO ECE block (req #2), computed via `recalibrate.py` on the SAME
+    join it uses live: GRADED predictions with an ordinal reference grade. Returns raw vs LOO ECE
+    (the LOO number is the headline the gate reads), plus the discrimination invariants (AUROC /
+    exact-accuracy) so a reviewer can confirm the offline number matches `python -m citeval.recalibrate`."""
+    from . import recalibrate as R
+    ds = R.build_dataset(graded_records, references)
+    if not ds:
+        return {"status": "pending", "n_fit": 0, "raw_ece": None, "loo_ece": None,
+                "auroc": None, "exact_accuracy": None}
+    xs = [d[1] for d in ds]
+    ys = [d[2] for d in ds]
+    keys = [round(x, 6) for x in xs]
+    raw_ece, _ = R.ece_and_reliability(keys, xs, ys)
+    loo = R.loo_predictions(xs, ys)
+    loo_ece, _ = R.ece_and_reliability(keys, loo, ys)
+    return {"status": "scored", "n_fit": len(ds), "raw_ece": raw_ece, "loo_ece": loo_ece,
+            "auroc": R.auroc(xs, ys), "exact_accuracy": sum(ys) / len(ys)}
+
+
+def score_from_predictions(results_rows: list[dict], references: dict[str, str] | None = None, *,
+                           version: str = "") -> dict:
+    """Recompute the full scorecard dict PURELY from durable results rows (req #2). Reconstructs the
+    exact `rows` / `graded_records` / `errors` the live `score()` built, re-attaches the AUTHORITATIVE
+    reference grade (the `--graded-reference` file wins over the row's baked snapshot), and calls the
+    SAME `aggregate_metrics` — so the numbers are identical to the live scorecard. Adds a `recal`
+    block (recalibrated-LOO ECE). No model, no network, no key."""
+    references = references or {}
+    rows: list[dict] = []
+    graded_records: list[dict] = []
+    errors: list[dict] = []
+    for r in results_rows:
+        cid = r.get("case_id")
+        if r.get("status") == "ERROR":
+            errors.append({"case_id": cid, "status": "ERROR", "error": r.get("error"),
+                           "code_version": r.get("code_version", version),
+                           "elapsed_s": r.get("elapsed_s")})
+            continue
+        # Objective axes present? The live `score()` EXCLUDES a case whose objective pipeline did not
+        # complete (a resumed graded case whose cheap objective RE-run raised) from `rows` — the
+        # objective metric denominators — while KEEPING its stored graded prediction (it lands in
+        # graded_records only). Such a durable row carries a null pred_retraction. `pred_retraction is
+        # not None` is THE signal the objective pipeline ran (live always has a ground_truth_label
+        # alongside it), so gate on that alone to mirror the live inclusion exactly — skip `rows`,
+        # still record the graded prediction — instead of re-admitting the case as a clean negative
+        # (bool(None) == False).
+        if r.get("pred_retraction") is not None:
+            rows.append({
+                "case_id": cid, "gt": r.get("ground_truth_label"),
+                "pred_retraction": bool(r.get("pred_retraction")),
+                "pred_scope": bool(r.get("pred_scope")),
+                "overall": r.get("overall") or "",
+                "species_verdict": r.get("species_scope_verdict") or "",
+            })
+        graded_records.append({
+            "case_id": cid, "status": r.get("status"), "grade": r.get("grade"),
+            "confidence": r.get("confidence"),
+            "ref_grade": references.get(cid, r.get("ref_grade")),   # authoritative reference wins
+            "evidence_depth": r.get("evidence_depth"),
+        })
+    res = aggregate_metrics(rows, graded_records, errors, graded=True, version=version)
+    # The recal block MUST score the graded axis against the SAME effective reference the calibration
+    # block used — `graded_records[*].ref_grade` (authoritative `--graded-reference`, else the baked
+    # snapshot) — NOT the raw `references` dict. Otherwise `--from-predictions` WITHOUT a
+    # `--graded-reference` would score calibration against the baked ref while the recal block went
+    # 'pending' (references empty), and the two blocks would disagree. Deriving the recal reference
+    # from graded_records keeps them identical in every invocation.
+    effective_refs = {gr["case_id"]: gr["ref_grade"] for gr in graded_records
+                      if gr.get("ref_grade") in ORDINAL_INDEX}
+    res["recal"] = compute_recal_block(graded_records, effective_refs)
     return res
 
 
@@ -743,6 +926,24 @@ def render_calibration(cal: dict) -> list[str]:
             L.append(f"| · | {b['n']} | {b['mean_conf']:.2f} | {b['accuracy']:.2f} | "
                      f"[{b['wilson_ci'][0]:.2f}, {b['wilson_ci'][1]:.2f}] |")
         L.append("")
+    return L
+
+
+def render_recal(recal: dict) -> list[str]:
+    """The recalibrated-LOO ECE block (req #2) — the honest absolute-calibration number the gate
+    reads, computed offline via recalibrate.py's Platt LOO-CV. Only shown on the offline path."""
+    L = ["## Recalibrated calibration (offline Platt LOO-CV, via recalibrate.py)", ""]
+    if recal.get("status") != "scored":
+        L += ["- **Recal-LOO ECE:** pending — no GRADED prediction joined to an ordinal reference.", ""]
+        return L
+    L += [
+        f"- **Recal-LOO ECE (headline):** {_fmt_metric(recal.get('loo_ece'))}  "
+        f"(raw ECE {_fmt_metric(recal.get('raw_ece'))} → leave-one-out Platt)",
+        f"- **AUROC (unchanged by monotone recal):** {_fmt_metric(recal.get('auroc'))} · "
+        f"**exact-match accuracy:** {_fmt_metric(recal.get('exact_accuracy'))}  "
+        f"(n_fit={recal.get('n_fit')})",
+        "",
+    ]
     return L
 
 
@@ -805,6 +1006,8 @@ def render_scorecard(res: dict) -> str:
     if graded:
         L += render_coverage_by_depth(res.get("coverage_by_depth") or {})
         L += render_calibration(cal)
+        if res.get("recal"):
+            L += render_recal(res["recal"])
     L += ["## Per-case", "", "| case | gt | retraction? | scope? | overall |",
           "|---|---|---|---|---|"]
     for x in res["rows"]:
@@ -820,6 +1023,48 @@ def _load_corpus(path: Path) -> list[dict]:
     if path.suffix == ".jsonl":
         return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
     return json.loads(path.read_text())["cases"]
+
+
+def _corpus_label(path: Path) -> str:
+    """Short label for the durable-results filename: `corpus_cal30.jsonl` -> `cal30`,
+    `eval_set.json` -> `eval_set`."""
+    stem = Path(path).stem
+    return stem[len("corpus_"):] if stem.startswith("corpus_") else stem
+
+
+def _load_results(path: str | Path) -> list[dict]:
+    """Read a durable results file (jsonl) OR a scorecard.json (for convenience). Returns the flat
+    per-case rows."""
+    p = Path(path)
+    if p.suffix == ".jsonl":
+        return [json.loads(line) for line in p.read_text().splitlines() if line.strip()]
+    raw = json.loads(p.read_text())
+    return raw if isinstance(raw, list) else raw.get("results", raw.get("rows", []))
+
+
+def _run_offline(args, version: str) -> None:
+    """OFFLINE recompute (+ optional gate) from a durable results file. Deterministic, no network/key.
+    Exits nonzero on a gate breach so CI / `make eval` fails loudly."""
+    results = _load_results(args.from_predictions)
+    references = load_reference_grades(args.graded_reference) if args.graded_reference else {}
+    res = score_from_predictions(results, references, version=version)
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "scorecard.md").write_text(render_scorecard(res))
+    (out / "scorecard.json").write_text(json.dumps(
+        {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))
+    print(render_scorecard(res))
+
+    if not args.gate:
+        print(f"[offline scorecard from {args.from_predictions} — no gate; pass --gate to enforce]")
+        return
+
+    from .gate import DEFAULT_THRESHOLDS_PATH, evaluate_gate, load_thresholds, render_gate
+    thresholds = load_thresholds(args.gate_thresholds or DEFAULT_THRESHOLDS_PATH)
+    gr = evaluate_gate(res, thresholds)
+    print(render_gate(gr))
+    sys.exit(gr.exit_code)
 
 
 def main() -> None:
@@ -842,12 +1087,31 @@ def main() -> None:
     ap.add_argument("-v", "--verbose", action="store_true",
                     help="also print a line per triad round (or set CITEVAL_PROGRESS=1)")
     ap.add_argument("--out", default=str(OUT_DIR))
+    ap.add_argument("--from-predictions", dest="from_predictions",
+                    help="OFFLINE: recompute the ENTIRE scorecard from a durable results jsonl "
+                         "(objective axes + graded prediction per case). No pipeline / NCBI / key.")
+    ap.add_argument("--gate", action="store_true",
+                    help="after --from-predictions, compare to corpus/calibration/gate_thresholds.json "
+                         "and exit nonzero on any breach (regression / floor / confident-wrong).")
+    ap.add_argument("--gate-thresholds", dest="gate_thresholds",
+                    help="path to gate_thresholds.json (default corpus/calibration/gate_thresholds.json)")
     args = ap.parse_args()
 
     # Stale-binary guard (WO-C4 §4): the very FIRST stderr line names the exact code producing this
     # run, so a scorecard is never mistaken for the output of a different/older binary.
     version = code_version()
     _log(f"[version] {version} {git_branch()}")
+
+    # OFFLINE fast path (req #2/#3): recompute + optionally gate PURELY from a durable results file.
+    # No corpus load, no pipeline, no NCBI, no ANTHROPIC_API_KEY. This is the loop we run every change.
+    if args.from_predictions:
+        _run_offline(args, version)
+        return
+    if args.gate:
+        # The gate is an OFFLINE check (req #3): it grades a durable results file, not a live run.
+        _log("[gate] --gate applies to the offline --from-predictions path and is IGNORED on a live "
+             "run. Run `make eval` (or `python -m citeval.scorer --from-predictions <results.jsonl> "
+             "--graded-reference <ref.jsonl> --gate`).")
 
     corpus_path = Path(args.corpus) if args.corpus else EVAL_PATH
     cases = _load_corpus(corpus_path)
@@ -880,7 +1144,7 @@ def main() -> None:
 
     res = score(cases, graded=graded, references=references, out_dir=out, limit=args.limit,
                 fresh=args.fresh, progress=graded, verbose=verbose, version=version,
-                recalibration=recal_fn)
+                recalibration=recal_fn, corpus_label=_corpus_label(corpus_path))
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))

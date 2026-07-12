@@ -1,0 +1,36 @@
+{
+  "_comment": "Versioned gate thresholds for `make eval` / `python -m citeval.eval`. Seeded from the cal30 offline baseline (results_cal30.jsonl x graded_reference_v2) WITH margin. `thresholds` are hard floors/ceilings; `baseline` is the reference point for the zero-objective-regression guard (any objective axis dropping below baseline is a breach even if it still clears the floor). After an intended, reviewed change, reseed the `baseline` block below with the fresh measured numbers via `make baseline` (== `python -m citeval.eval --print-baseline`), and bump `thresholds_version`.",
+  "thresholds_version": 1,
+  "reference_version": "graded_reference_v2",
+  "code_version_seeded": "4f2a418",
+  "corpus": "cal30",
+  "confident_wrong_tau": 0.85,
+  "thresholds": {
+    "retraction_precision": {"min": 0.95},
+    "retraction_recall": {"min": 0.95},
+    "scope_precision": {"min": 0.95},
+    "scope_recall": {"min": 0.80, "_note": "PINNED TO THE MEASURED BASELINE (0.80), not the 0.95 target. The C3-lite lexical scope stub has a known recall gap (2 cal30 misses where a claim asserts human relevance with no explicit lexical marker). Closing it to 0.95 requires the Opus C3 upgrade (WO-C3). A DROP below 0.80 is a regression and fails the gate; the zero-objective-regression guard also pins it at 0.80."},
+    "control_specificity": {"min": 0.95},
+    "graded_exact": {"min": 0.50},
+    "graded_adjacent": {"min": 0.80},
+    "qwk": {"min": 0.60},
+    "recal_loo_ece": {"max": 0.20},
+    "coverage": {"min": 0.90}
+  },
+  "baseline": {
+    "retraction_precision": 1.0,
+    "retraction_recall": 1.0,
+    "retraction_specificity": 1.0,
+    "scope_precision": 1.0,
+    "scope_recall": 0.8,
+    "scope_specificity": 1.0,
+    "control_specificity": 1.0,
+    "graded_exact": 0.5925925925925926,
+    "graded_adjacent": 0.8518518518518519,
+    "qwk": 0.6949152542372881,
+    "coverage": 1.0,
+    "recal_loo_ece": 0.15670247660992453,
+    "auroc": 0.6846590909090909,
+    "confident_wrong_case_ids": ["A10", "A27", "Bp01", "Bs07", "Ch03", "Ce11"]
+  }
+}
