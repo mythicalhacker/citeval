@@ -483,3 +483,165 @@ def render_byo_html(claim_unit: ClaimUnit, g: GroundedRecord, scope: ScopeFrame,
     B += _legend_html(graded)
     B.append("</main>")
     return _doc_html(f"Citation check — PMID {ci.value}", B)
+
+
+# --------------------------------------------------------------------------- showcase (offline gallery)
+# An offline, no-key gallery of worked examples: each card shows the claim, the cited paper, the
+# per-axis verdicts (reusing `_axis_table_html`), the graded substantive-support summary, and the
+# decisive verbatim span. This is rendering-only, like the rest of C5 — the caller (docs/build_showcase.py)
+# assembles each card's `Verdict` from CACHED corpus results and hands it here to render.
+#
+# A card is a plain dict (kept off the frozen contract deliberately) with keys:
+#   case_id        str  — corpus case id (e.g. "A25")
+#   story_title    str  — the one-line "why this case matters" headline
+#   story_caption  str  — 1–2 sentence explanation of what the system caught
+#   axis_focus     str  — which axis is the hero of this card ("retraction" | "species_scope" | ...)
+#   claim          str  — the citing sentence (verbatim)
+#   citing_source  str  — provenance of the citing paper (e.g. "PMC6854371"), optional
+#   cited          dict — {"title", "journal", "pmid", "doi"} of the cited paper
+#   verdict        Verdict — the assembled per-axis verdict (rendered via _axis_table_html)
+#   decisive       dict — {"span": <verbatim quote>, "source": <label>}, optional
+#   reference      dict — {"grade": <ref grade>, "note": <one line>}, optional (agreement-with-reference)
+_SHOWCASE_STYLE = """
+.intro { background: #f6f8fa; border: 1px solid #e5e5e5; border-radius: .6rem; padding: 1rem 1.25rem;
+         margin: 0 0 1.5rem; }
+.intro p { margin: .4rem 0; }
+.legendgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .3rem .9rem;
+              margin: .5rem 0 0; font-size: .88rem; }
+.legendgrid b { font-weight: 600; }
+.case { border: 1px solid #e2e2e2; border-radius: .6rem; padding: 1.1rem 1.3rem; margin: 0 0 1.4rem;
+        background: #fff; }
+.case-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.case-id { font-weight: 700; font-size: .8rem; letter-spacing: .04em; color: #fff; background: #444;
+           padding: .12rem .5rem; border-radius: .5rem; }
+.case-head h2 { margin: 0; border: none; padding: 0; font-size: 1.12rem; }
+.axis-tag { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+            color: #5f6368; }
+.story { color: #333; margin: .5rem 0 1rem; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; align-items: start; }
+@media (max-width: 52rem) { .cols { grid-template-columns: 1fr; } }
+.lbl { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: #5f6368; margin: .8rem 0 .25rem; }
+.col > .lbl:first-child { margin-top: 0; }
+.claim { font-size: .95rem; }
+.cited .ct { font-weight: 600; }
+.cited .meta, .src { color: #5f6368; font-size: .82rem; }
+.graded-mini { margin-top: 1rem; padding-top: .8rem; border-top: 1px dashed #ddd; }
+.graded-mini p { margin: .3rem 0; }
+.refnote { color: #137333; font-size: .84rem; }
+@media (prefers-color-scheme: dark) {
+  .intro { background: #22262e; border-color: #333; }
+  .case { background: #16181c; border-color: #333; }
+  .case-id { background: #666; }
+  .story { color: #cfcfcf; }
+  .graded-mini { border-top-color: #333; }
+  .cited .meta, .src, .axis-tag { color: #9aa0a6; }
+  .refnote { color: #6ee7a0; }
+}
+""".strip()
+
+
+def _showcase_intro_html() -> list[str]:
+    """The reading guide shown once at the top of the gallery (light provenance legend)."""
+    H = ['<section class="intro">']
+    H.append("<p><strong>citeval</strong> checks whether the paper cited to support a scientific "
+             "claim actually supports it — catching <em>retraction</em>, <em>species/population "
+             "scope mismatch</em>, and graded <em>substantive over-reach</em>. Every verdict carries "
+             "a confidence tier and a provenance label.</p>")
+    H.append("<p>These four cases are drawn verbatim from the 30-case calibration corpus and rendered "
+             "from <strong>cached results</strong> — no API key is needed to view this page. "
+             "Objective axes (retraction, scope) are read from structured records and are "
+             "authoritative; the substantive-support grade is model-inferred by an adversarial "
+             "supporter/refuter/critic panel with a self-consistency confidence.</p>")
+    H.append('<div class="legendgrid">')
+    for atom, desc in _legend_items(graded=True):
+        H.append(f"<div>{_prov_badge(atom)} {_esc(desc)}</div>")
+    H.append("</div>")
+    H.append(f'<p class="override">{_esc(_OVERRIDE_NOTE)}</p>')
+    H.append("</section>")
+    return H
+
+
+def render_showcase_card(card: dict) -> list[str]:
+    """One gallery card (list of HTML lines). Rendering-only; see the module note for the card
+    shape. Reuses the shared per-axis table + provenance badges so a card row is byte-consistent
+    with the full report."""
+    v: Verdict = card["verdict"]
+    graded = _graded_axis(v)
+    cd = card.get("cited") or {}
+    H = ['<article class="case">']
+    H.append('<div class="case-head">'
+             f'<span class="case-id">{_esc(card.get("case_id", ""))}</span>'
+             f'<h2>{_esc(card.get("story_title", ""))}</h2>'
+             + (f'<span class="axis-tag">{_esc(card["axis_focus"].replace("_", " "))}</span>'
+                if card.get("axis_focus") else "")
+             + "</div>")
+    if card.get("story_caption"):
+        H.append(f'<p class="story">{_esc(card["story_caption"])}</p>')
+
+    H.append('<div class="cols">')
+    # left column: claim + cited paper
+    H.append('<div class="col">')
+    H.append('<p class="lbl">Claim (verbatim)</p>')
+    H.append(f'<blockquote class="claim">{_esc(card.get("claim", ""))}</blockquote>')
+    if card.get("citing_source"):
+        H.append(f'<p class="src">— as cited in {_esc(card["citing_source"])}</p>')
+    H.append('<p class="lbl">Cited paper</p>')
+    doi = cd.get("doi")
+    meta = " · ".join(x for x in [
+        _esc(cd.get("journal", "")).strip(),
+        f'PMID {_esc(cd.get("pmid", ""))}',
+        (f"DOI {_esc(doi)}" if doi else ""),
+    ] if x)
+    H.append(f'<p class="cited"><span class="ct">{_esc(cd.get("title", ""))}</span><br>'
+             f'<span class="meta">{meta}</span></p>')
+    H.append("</div>")
+
+    # right column: overall + per-axis table
+    H.append('<div class="col">')
+    H.append(f'<p class="overall">Overall: {_esc(v.overall)}</p>')
+    H += _axis_table_html(v)
+    H.append("</div>")
+    H.append("</div>")  # .cols
+
+    # graded substantive summary + decisive span
+    if graded is not None:
+        H.append('<div class="graded-mini">')
+        H.append("<p><strong>Substantive support:</strong> "
+                 f"{_esc(_grade_label(graded))} &nbsp;·&nbsp; "
+                 f"<strong>Confidence:</strong> {_esc(_confidence_text(graded))} "
+                 f"&nbsp;·&nbsp; {_prov_badge(graded.provenance)}</p>")
+        dec = card.get("decisive") or {}
+        if dec.get("span"):
+            src = dec.get("source") or "cited paper"
+            H.append(f'<p class="lbl">Key evidence span — {_esc(src)}</p>')
+            H.append(f"<blockquote>{_esc(dec['span'])}</blockquote>")
+        ref = card.get("reference") or {}
+        if ref.get("note"):
+            H.append(f'<p class="refnote">{_esc(ref["note"])}</p>')
+        H.append("</div>")
+    H.append("</article>")
+    return H
+
+
+def render_showcase_page(cards: list[dict], *, title: str = "citeval — worked examples") -> str:
+    """Self-contained HTML gallery (no external assets; all dynamic content escaped) of the given
+    cards. Carries the same information a full report would per case, in a compact card form."""
+    B: list[str] = ["<main>"]
+    B.append(f"<h1>{_esc(title)}</h1>")
+    B += _showcase_intro_html()
+    for card in cards:
+        B += render_showcase_card(card)
+    B.append("</main>")
+    return "\n".join([
+        "<!doctype html>",
+        '<html lang="en"><head>',
+        '<meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        f"<title>{_esc(title)}</title>",
+        f"<style>{_HTML_STYLE}\n{_SHOWCASE_STYLE}</style>",
+        "</head><body>",
+        *B,
+        "</body></html>",
+        "",
+    ])

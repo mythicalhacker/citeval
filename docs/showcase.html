@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>citeval — worked examples</title>
+<style>:root { color-scheme: light dark; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+       sans-serif; line-height: 1.5; color: #1a1a1a; background: #fff;
+       margin: 0 auto; max-width: 62rem; padding: 2rem; }
+h1 { font-size: 1.6rem; margin: 0 0 1rem; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; border-bottom: 1px solid #e5e5e5; padding-bottom: .25rem; }
+.overall { font-weight: 700; padding: .55rem .8rem; background: #f6f8fa;
+           border-left: 4px solid #444; border-radius: .25rem; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { border: 1px solid #e2e2e2; padding: .4rem .55rem; text-align: left; vertical-align: top; }
+th { background: #f6f8fa; }
+.badge { display: inline-block; padding: .08rem .45rem; border-radius: .6rem; font-size: .76rem;
+         font-weight: 600; white-space: nowrap; }
+.prov-meta { background: #e6f4ea; color: #137333; }
+.prov-text { background: #e8f0fe; color: #1967d2; }
+.prov-model { background: #fef7e0; color: #99590b; }
+.prov-stub { background: #f1f3f4; color: #5f6368; }
+.prov-composite { background: #f3e8fd; color: #7b2fbe; }
+.graded { background: #fbfbfd; border: 1px solid #e5e5e5; border-radius: .5rem; padding: 1rem 1.2rem; }
+.graded dl { display: grid; grid-template-columns: max-content 1fr; gap: .3rem .8rem; margin: 0; }
+.graded dt { font-weight: 600; }
+.graded dd { margin: 0; }
+blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb;
+             background: #fafafa; color: #333; }
+.gloss { color: #555; font-size: .9rem; }
+.legend dt { font-weight: 600; }
+.override { font-style: italic; color: #444; }
+.stubnote { border-left: 3px solid #bbb; padding: .4rem .8rem; color: #555; background: #fafafa; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e6; background: #16181c; }
+  h2 { border-bottom-color: #333; }
+  .overall { background: #22262e; border-left-color: #888; }
+  th { background: #22262e; } th, td { border-color: #333; }
+  .graded { background: #1b1e24; border-color: #333; }
+  blockquote, .stubnote { background: #1b1e24; border-left-color: #555; color: #cfcfcf; }
+  .gloss, .override { color: #b3b3b3; }
+}
+.intro { background: #f6f8fa; border: 1px solid #e5e5e5; border-radius: .6rem; padding: 1rem 1.25rem;
+         margin: 0 0 1.5rem; }
+.intro p { margin: .4rem 0; }
+.legendgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: .3rem .9rem;
+              margin: .5rem 0 0; font-size: .88rem; }
+.legendgrid b { font-weight: 600; }
+.case { border: 1px solid #e2e2e2; border-radius: .6rem; padding: 1.1rem 1.3rem; margin: 0 0 1.4rem;
+        background: #fff; }
+.case-head { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+.case-id { font-weight: 700; font-size: .8rem; letter-spacing: .04em; color: #fff; background: #444;
+           padding: .12rem .5rem; border-radius: .5rem; }
+.case-head h2 { margin: 0; border: none; padding: 0; font-size: 1.12rem; }
+.axis-tag { font-size: .72rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+            color: #5f6368; }
+.story { color: #333; margin: .5rem 0 1rem; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; align-items: start; }
+@media (max-width: 52rem) { .cols { grid-template-columns: 1fr; } }
+.lbl { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+       color: #5f6368; margin: .8rem 0 .25rem; }
+.col > .lbl:first-child { margin-top: 0; }
+.claim { font-size: .95rem; }
+.cited .ct { font-weight: 600; }
+.cited .meta, .src { color: #5f6368; font-size: .82rem; }
+.graded-mini { margin-top: 1rem; padding-top: .8rem; border-top: 1px dashed #ddd; }
+.graded-mini p { margin: .3rem 0; }
+.refnote { color: #137333; font-size: .84rem; }
+@media (prefers-color-scheme: dark) {
+  .intro { background: #22262e; border-color: #333; }
+  .case { background: #16181c; border-color: #333; }
+  .case-id { background: #666; }
+  .story { color: #cfcfcf; }
+  .graded-mini { border-top-color: #333; }
+  .cited .meta, .src, .axis-tag { color: #9aa0a6; }
+  .refnote { color: #6ee7a0; }
+}</style>
+</head><body>
+<main>
+<h1>citeval — worked examples</h1>
+<section class="intro">
+<p><strong>citeval</strong> checks whether the paper cited to support a scientific claim actually supports it — catching <em>retraction</em>, <em>species/population scope mismatch</em>, and graded <em>substantive over-reach</em>. Every verdict carries a confidence tier and a provenance label.</p>
+<p>These four cases are drawn verbatim from the 30-case calibration corpus and rendered from <strong>cached results</strong> — no API key is needed to view this page. Objective axes (retraction, scope) are read from structured records and are authoritative; the substantive-support grade is model-inferred by an adversarial supporter/refuter/critic panel with a self-consistency confidence.</p>
+<div class="legendgrid">
+<div><span class="badge prov-meta">metadata-grounded</span> read from a structured record (Retraction Watch, MeSH tags + tree numbers, NCBI linkage). Authoritative.</div>
+<div><span class="badge prov-text">text-grounded</span> an explicit lexical marker in the claim wording.</div>
+<div><span class="badge prov-model">model-inferred</span> a model judgement — the C3 claim-scope hint plus the graded substantive-support axis, produced by the adversarial supporter/refuter/critic agent with calibration.</div>
+<div><span class="badge prov-stub">stub-not-adjudicated</span> deliberately not decided in the thin slice.</div>
+</div>
+<p class="override">Metadata (grounded) always overrides model/text on objective axes — a conflict is scored as the model being wrong, not the record.</p>
+</section>
+<article class="case">
+<div class="case-head"><span class="case-id">A25</span><h2>A finding — and an author — the cited paper never contained</h2><span class="axis-tag">substantive support</span></div>
+<p class="story">The sentence credits “Chen Guanghui” with showing Mfn2 inhibits VSMC proliferation independent of mitochondrial fusion. The cited paper is about miR-214 and fibroblast differentiation in rats — it contains neither that finding nor that author. Graded unsupported-for-the-claim at high self-consistency (and the paper is also retracted).</p>
+<div class="cols">
+<div class="col">
+<p class="lbl">Claim (verbatim)</p>
+<blockquote class="claim">Chen Guanghui found that Mfn2 can significantly inhibit VSMC proliferation in vitro and in vivo, and this action has nothing to do with mitochondrial fusion; Furthermore rats and humans have 95.2% Mfn2 homology 35.</blockquote>
+<p class="src">— as cited in PMC6854371</p>
+<p class="lbl">Cited paper</p>
+<p class="cited"><span class="ct">MicroRNA-214 Affects Fibroblast Differentiation of Adipose-Derived Mesenchymal Stem Cells by Targeting Mitofusin-2 during Pelvic Floor Dysfunction in SD Rats with Birth Trauma.</span><br><span class="meta">Cellular physiology and biochemistry : international journal of experimental cellular physiology, biochemistry, and pharmacology · PMID 28772265 · DOI 10.1159/000479570</span></p>
+</div>
+<div class="col">
+<p class="overall">Overall: NOT SUPPORTED AS STATED (CITATION RELIES ON A RETRACTED PAPER; SPECIES SCOPE MISMATCH) — substantive grade: unsupported-for-the-claim (held separately)</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Axis</th><th>Verdict</th><th>Confidence</th><th>Provenance</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>retraction</td><td><strong>RELIES_ON_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>Cited paper is retracted per structured records; a claim resting on it inherits the retraction.</td></tr>
+<tr><td>species_scope</td><td><strong>SCOPE_MISMATCH</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human/clinical relevance, but cited paper MeSH organism scope is [&#x27;Animals&#x27;, &#x27;Rats&#x27;, &#x27;Rats, Sprague-Dawley&#x27;] with &#x27;Humans&#x27; ABSENT — the human claim is not supported by this animal study. Metadata authoritative.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>substantive_support</td><td><strong>unsupported-for-the-claim</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “unsupported-for-the-claim” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: abstract.</td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="graded-mini">
+<p><strong>Substantive support:</strong> unsupported-for-the-claim &nbsp;·&nbsp; <strong>Confidence:</strong> high — self-consistency agreement 1.00 across 4 samples; verbalized high &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
+<p class="lbl">Key evidence span — quoted by the independent reference grading (Claude Science), from the abstract</p>
+<blockquote>The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.</blockquote>
+<p class="refnote">Cross-check: the system&#x27;s grade agrees with the independent reference grading (Claude Science) from the abstract.</p>
+</div>
+</article>
+<article class="case">
+<div class="case-head"><span class="case-id">A02</span><h2>The science checks out — but the paper was retracted</h2><span class="axis-tag">retraction</span></div>
+<p class="story">The GAS5 / miR-21 / SOX5 sorafenib-sensitivity claim is substantively supported by the cited paper&#x27;s own results (graded fully-supported). But Retraction Watch records the paper as retracted for data/image duplication and paper-mill concerns — so the citation cannot stand. Metadata overrides the model: overall NOT SUPPORTED.</p>
+<div class="cols">
+<div class="col">
+<p class="lbl">Claim (verbatim)</p>
+<blockquote class="claim">In terms of its impact on sorafenib resistance, it was shown to act as a sponge for miR-21 and upregulation of GAS5 resulted in likewise upregulation of the transcription factor sex determining region Y-box protein 5 (SOX5), conferring increased sensitivity to sorafenib [19].</blockquote>
+<p class="src">— as cited in PMC7463785</p>
+<p class="lbl">Cited paper</p>
+<p class="cited"><span class="ct">Long non-coding RNA GAS5 sensitizes renal cell carcinoma to sorafenib via miR-21/SOX5 pathway.</span><br><span class="meta">Cell cycle (Georgetown, Tex.) · PMID 29895198 · DOI 10.1080/15384101.2018.1475826</span></p>
+</div>
+<div class="col">
+<p class="overall">Overall: NOT SUPPORTED AS STATED (CITATION RELIES ON A RETRACTED PAPER) — substantive grade: fully-supported (held separately)</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Axis</th><th>Verdict</th><th>Confidence</th><th>Provenance</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>retraction</td><td><strong>RELIES_ON_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>Cited paper is retracted per structured records; a claim resting on it inherits the retraction.</td></tr>
+<tr><td>species_scope</td><td><strong>CLAIM_SCOPE_UNSTATED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>Claim does not explicitly assert an organism scope; not flaggable without the deeper (Opus) scope parse.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 0.57 across the sampled rounds; evidence depth: abstract.</td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="graded-mini">
+<p><strong>Substantive support:</strong> fully-supported &nbsp;·&nbsp; <strong>Confidence:</strong> low — self-consistency agreement 0.57; verbalized low &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
+<p class="lbl">Key evidence span — quoted by the independent reference grading (Claude Science), from the abstract</p>
+<blockquote>GAS5 overexpression conferred sorafenib sensitive to nonresponsive RCC cells, whereas knockdown of GAS5 promoted responsive RCC cells resistant to sorafenib treatment in vitro and in vivo. Mechanistically, GAS5 functioned as competing endogenous RNA to repress miR-21, which controlled its down-stream target SOX5.</blockquote>
+<p class="refnote">Cross-check: the system&#x27;s grade agrees with the independent reference grading (Claude Science) from the abstract.</p>
+</div>
+</article>
+<article class="case">
+<div class="case-head"><span class="case-id">Bs05</span><h2>Right substance, wrong species</h2><span class="axis-tag">species scope</span></div>
+<p class="story">The paper fully supports that bacteriophages modulate the gut microbiota and the host — substance held constant, graded fully-supported. But it is a mouse study (MeSH: Animals, Mice; no “Humans”), while the claim asserts relevance to human health. That species-scope mismatch is carried on its own axis, so it never silently depresses the substantive grade.</p>
+<div class="cols">
+<div class="col">
+<p class="lbl">Claim (verbatim)</p>
+<blockquote class="claim">While much focus is on the bacterial component of this community, recent studies highlight the importance of other microorganisms such as bacteriophages (125, 126) and fungi (127, 128) in human health.</blockquote>
+<p class="src">— as cited in PMC7596417</p>
+<p class="lbl">Cited paper</p>
+<p class="cited"><span class="ct">Dynamic Modulation of the Gut Microbiota and Metabolome by Bacteriophages in a Mouse Model.</span><br><span class="meta">Cell host &amp; microbe · PMID 31175044 · DOI 10.1016/j.chom.2019.05.001</span></p>
+</div>
+<div class="col">
+<p class="overall">Overall: NOT SUPPORTED AS STATED (SPECIES SCOPE MISMATCH) — substantive grade: fully-supported (held separately)</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Axis</th><th>Verdict</th><th>Confidence</th><th>Provenance</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>retraction</td><td><strong>NOT_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>No retraction found in Retraction Watch or NCBI records.</td></tr>
+<tr><td>species_scope</td><td><strong>SCOPE_MISMATCH</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human/clinical relevance, but cited paper MeSH organism scope is [&#x27;Animals&#x27;, &#x27;Bacteriophages&#x27;, &#x27;Mice&#x27;] with &#x27;Humans&#x27; ABSENT — the human claim is not supported by this animal study. Metadata authoritative.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: fulltext.</td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="graded-mini">
+<p><strong>Substantive support:</strong> fully-supported &nbsp;·&nbsp; <strong>Confidence:</strong> high — self-consistency agreement 1.00 across 4 samples; verbalized high &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
+<p class="lbl">Key evidence span — quoted by the independent reference grading (Claude Science), from full text</p>
+<blockquote>Our results also reveal that phage predation in the gut microbiota has potential impact on the mammalian host, as manifested by modulation of the gut metabolome.</blockquote>
+<p class="refnote">Cross-check: the system&#x27;s grade agrees with the independent reference grading (Claude Science) from full text.</p>
+</div>
+</article>
+<article class="case">
+<div class="case-head"><span class="case-id">Ch13</span><h2>A clean, high-confidence match</h2><span class="axis-tag">substantive support</span></div>
+<p class="story">A human iPSC-derived nigral-neuron study; the claim&#x27;s mechanistic cascade matches the paper&#x27;s own discussion nearly verbatim. Not retracted, species-consistent (human claim, human study), graded fully-supported at high confidence.</p>
+<div class="cols">
+<div class="col">
+<p class="lbl">Claim (verbatim)</p>
+<blockquote class="claim">In particular, increased mitochondrial oxidative stress in fibroblast-derived induced pluripotent stem cells, differentiated into human nigral DA neurons, triggers a DA-dependent toxic cascade, leading to oxidized DA accumulation and reduction in glucocerebrosidase enzymatic activity, lysosomal dysfunctions, and α-syn accumulation [49].</blockquote>
+<p class="src">— as cited in PMC9977911</p>
+<p class="lbl">Cited paper</p>
+<p class="cited"><span class="ct">Dopamine oxidation mediates mitochondrial and lysosomal dysfunction in Parkinson&#x27;s disease.</span><br><span class="meta">Science (New York, N.Y.) · PMID 28882997 · DOI 10.1126/science.aam9080</span></p>
+</div>
+<div class="col">
+<p class="overall">Overall: SUBSTANTIVE SUPPORT: fully-supported</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Axis</th><th>Verdict</th><th>Confidence</th><th>Provenance</th><th>Basis</th></tr></thead>
+<tbody>
+<tr><td>retraction</td><td><strong>NOT_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>No retraction found in Retraction Watch or NCBI records.</td></tr>
+<tr><td>species_scope</td><td><strong>SCOPE_CONSISTENT</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human scope; cited paper MeSH organism scope includes Humans ([&#x27;Animals&#x27;, &#x27;Humans&#x27;, &#x27;Mice&#x27;, &#x27;Mice, Knockout&#x27;]).</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: fulltext.</td></tr>
+</tbody></table></div>
+</div>
+</div>
+<div class="graded-mini">
+<p><strong>Substantive support:</strong> fully-supported &nbsp;·&nbsp; <strong>Confidence:</strong> high — self-consistency agreement 1.00 across 4 samples; verbalized high &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
+<p class="lbl">Key evidence span — quoted by the independent reference grading (Claude Science), from full text</p>
+<blockquote>Here we have found that elevated mitochondrial oxidant stress in human SNc dopaminergic neurons triggers a dopamine-dependent toxic cascade leading to lysosomal dysfunction and α-synuclein accumulation – causally linking three major pathological features of PD.</blockquote>
+<p class="refnote">Cross-check: the system&#x27;s grade agrees with the independent reference grading (Claude Science) from full text.</p>
+</div>
+</article>
+</main>
+</body></html>
