@@ -38,11 +38,13 @@ client; the pipeline requests `OPUS_MODEL` on every call so the invariant is tes
 from __future__ import annotations
 
 import json
+import os
 import re
 import statistics
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Optional
 
 from .contracts import AxisFinding, GroundedRecord, ScopeFrame, Verdict
@@ -91,6 +93,39 @@ MAX_TOKENS_CRITIC = 4000     # 500→1500→4000: the evidence-first/grade-last 
                              # the production cap above the OBSERVED max, not by guess.
 
 _WS = re.compile(r"\s+")
+
+# ----------------------------------------------------------------------------------
+# Raw-transcript debug dump (CITEVAL_DEBUG_RAW=1) — WHY-did-it-decide forensics.
+# When enabled AND the config carries a `debug_case_id`, each triad round's RAW
+# supporter/refuter/critic model text (pre-JSON-parse) is written to
+# `<repo>/outputs/debug/<case>/r<round>_<role>.txt`. Purely diagnostic: it changes no
+# grade, never runs in a normal/CI run (the env flag is off), and can never crash a case
+# (all I/O is best-effort). A critic resample (transient truncation) is captured as a
+# distinct `<role>=critic_retry` file so both the discarded draw and the kept answer survive.
+# ----------------------------------------------------------------------------------
+_DEBUG_ROOT = Path(__file__).resolve().parents[2] / "outputs" / "debug"
+_FALSEY = ("", "0", "false", "no", "off", "none")
+
+
+def debug_raw_enabled() -> bool:
+    """True iff `CITEVAL_DEBUG_RAW` is set to a truthy value (fails CLOSED on the usual
+    off-spellings). Exposed so the scorer can decide whether to pass a `debug_case_id`."""
+    return os.environ.get("CITEVAL_DEBUG_RAW", "").strip().lower() not in _FALSEY
+
+
+def _maybe_dump_raw(cfg: "AdjudicationConfig", sample_idx: int, role: str, text: str) -> None:
+    """Best-effort write of one round's RAW model text. No-op unless the flag is on AND a
+    `debug_case_id` is set; any filesystem error is swallowed (debug I/O must never crash grading)."""
+    if not (cfg.debug_case_id and debug_raw_enabled()):
+        return
+    try:
+        # Sanitize to a single safe path segment: drop '.' from the allowed set too, so a malformed
+        # case_id of '.'/'..' can never resolve to the current/parent dir and escape outputs/debug/.
+        case_dir = _DEBUG_ROOT / (re.sub(r"[^\w-]", "_", str(cfg.debug_case_id)) or "_case")
+        case_dir.mkdir(parents=True, exist_ok=True)
+        (case_dir / f"r{sample_idx + 1}_{role}.txt").write_text(text or "", encoding="utf-8")
+    except OSError:
+        pass
 
 
 # ==================================================================================
@@ -185,6 +220,10 @@ class AdjudicationConfig:
     adaptive_early_stopping: bool = True   # stop once rounds are unanimous (past the min floor)
     rollup: Optional[Callable[[list[AxisFinding]], str]] = None
     recalibration: Optional[Callable[[float], float]] = None
+    # Diagnostic only (CITEVAL_DEBUG_RAW=1): when set, each round's raw supporter/refuter/critic
+    # text is dumped to outputs/debug/<debug_case_id>/. None (default) disables the dump. Never
+    # affects grading; the scorer sets it per-case only when the env flag is on.
+    debug_case_id: Optional[str] = None
     # Optional per-round progress hook (scorer verbose mode): called
     # `on_round(i, critic_round, critic_output_tokens)` after each triad sample so a slow live case
     # is visibly alive within seconds and the -v line can show out_tok=NNN (WO-C4 §3). Default None
@@ -279,10 +318,13 @@ def _complete(client, system: str, user: str, max_tokens: int,
 
 
 def _call_agent(client, system: str, user: str, max_tokens: int,
-                temperature: float) -> tuple[Optional[dict], Optional[int]]:
-    """One model turn on Opus 4.8 → (parsed dict | None, output_tokens | None)."""
+                temperature: float) -> tuple[Optional[dict], Optional[int], str]:
+    """One model turn on Opus 4.8 → (parsed dict | None, output_tokens | None, raw_text).
+
+    The RAW text is returned alongside the parsed dict so the caller can dump it for
+    forensics (CITEVAL_DEBUG_RAW) without a second model call."""
     text, out_tok = _complete(client, system, user, max_tokens, temperature)
-    return _parse_json(text), out_tok
+    return _parse_json(text), out_tok, text
 
 
 def _points(raw: Optional[dict]) -> list[dict]:
@@ -366,15 +408,17 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
                objective_facts: dict, segments: Sequence[str], sample_idx: int,
                cfg: AdjudicationConfig) -> _TriadSample:
     # Supporter (warm) → verbatim guard. Full text (when present) is fed as extra evidence.
-    sup_raw, _ = _call_agent(client, supporter.SYSTEM,
+    sup_raw, _, sup_text = _call_agent(client, supporter.SYSTEM,
                              supporter.build_user(claim_text, g.title, g.abstract, g.full_text),
                              cfg.max_tokens_advocate, cfg.advocate_temperature)
+    _maybe_dump_raw(cfg, sample_idx, "supporter", sup_text)
     sup_points, sup_discarded = _verbatim_survivors(_points(sup_raw), segments, "quote")
 
     # Refuter (warm) → verbatim guard → routes_to hard-filter (b6).
-    ref_raw, _ = _call_agent(client, refuter.SYSTEM,
+    ref_raw, _, ref_text = _call_agent(client, refuter.SYSTEM,
                              refuter.build_user(claim_text, g.title, g.abstract, direction, g.full_text),
                              cfg.max_tokens_advocate, cfg.advocate_temperature)
+    _maybe_dump_raw(cfg, sample_idx, "refuter", ref_text)
     ref_survivors, ref_discarded = _verbatim_survivors(_points(ref_raw), segments, "quote")
     ref_grade_points = [p for p in ref_survivors if _routes_to_grade(p)]
     ref_rollup_points = [p for p in ref_survivors if not _routes_to_grade(p)]
@@ -383,8 +427,9 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
     arguments = _blinded_arguments(sup_points, ref_grade_points, sample_idx)
     critic_user = critic.build_user(claim_text, g.title, g.abstract, arguments,
                                     objective_facts, GRADE_VALUES, direction, g.full_text)
-    critic_round, critic_out_tok = _call_agent(client, critic.SYSTEM, critic_user,
+    critic_round, critic_out_tok, critic_text = _call_agent(client, critic.SYSTEM, critic_user,
                                                cfg.max_tokens_critic, cfg.critic_temperature)
+    _maybe_dump_raw(cfg, sample_idx, "critic", critic_text)
     if critic_round is None:
         # Cheap robustness (WO-C4 fix): a lone truncated/garbled critic response parses to None and
         # would silently drop the whole round. Resample the critic ONCE at the same settings before
@@ -392,8 +437,9 @@ def _run_triad(client, g: GroundedRecord, claim_text: str, direction: Optional[s
         # per round; early-stopping is untouched (it reads the resulting rounds back in the caller).
         # The retry's own output_tokens replaces the truncated draw's so the captured usage reflects
         # the response we actually kept.
-        critic_round, critic_out_tok = _call_agent(client, critic.SYSTEM, critic_user,
+        critic_round, critic_out_tok, critic_retry_text = _call_agent(client, critic.SYSTEM, critic_user,
                                                    cfg.max_tokens_critic, cfg.critic_temperature)
+        _maybe_dump_raw(cfg, sample_idx, "critic_retry", critic_retry_text)
     return _TriadSample(critic_round, sup_points, ref_grade_points, ref_rollup_points,
                         sup_discarded, ref_discarded, critic_out_tok)
 
@@ -494,10 +540,11 @@ class _Outcome:
     abstained: bool
     non_substantiating: bool
     reason: str
+    reversal_downgraded: bool = False   # True iff the direction-reversal guard downgraded contradicted
 
 
 def _decide_outcome(agg: _Aggregate, has_grounded_evidence: bool, rounds_run: int,
-                    cfg: AdjudicationConfig) -> _Outcome:
+                    cfg: AdjudicationConfig, has_grounded_reversal: bool = True) -> _Outcome:
     """Map the aggregate to one of three outcomes.
 
     Priority (RB2 §2.3 / RB3 Part 2): a critic MAJORITY of `N/A` → non-substantiating (Trap 2,
@@ -507,6 +554,16 @@ def _decide_outcome(agg: _Aggregate, has_grounded_evidence: bool, rounds_run: in
     non-adjacent multimodal (a_adj < adjacent_floor) OR agreement is below tau_abstain AND the
     split is not a PURE adjacent-only split (a_adj == 1.0). NEVER abstain on a pure adjacent-only
     split — that is ordinal boundary noise, resolve to g* with moderate confidence.
+
+    Direction-reversal guard (`has_grounded_reversal`): `contradicted` — the most severe grade —
+    asserts the SOURCE states the OPPOSITE of the claim, so it must REST on grounded opposite-
+    direction evidence: at least one surviving refuter `direction_reversal` point (a verbatim span,
+    already past the verbatim guard). If g* is `contradicted` but no such grounded span exists, the
+    reversal rests on critic rhetoric, not the SOURCE — downgrade one ordinal step to
+    `unsupported-for-the-claim` (the SOURCE fails to support the claim rather than affirmatively
+    contradicting it). Enforced structurally (CLAUDE.md: not by convention), mirroring the scope
+    hard-filter; the confidence tier still comes from `a_exact` and the raw vote stays visible in
+    `evidence.self_consistency` for audit.
     """
     # NA/NEI majority is over the samples RUN, not the parseable subset (RB2 §2.3): unparseable
     # rounds count AGAINST reaching a majority rather than shrinking the denominator.
@@ -532,6 +589,13 @@ def _decide_outcome(agg: _Aggregate, has_grounded_evidence: bool, rounds_run: in
         return _Outcome("ABSTAINED", NOT_ENOUGH_INFO, True, False,
                         f"Self-consistency dispersed (a_exact={agg.a_exact:.2f}, "
                         f"a_adj={agg.a_adj:.2f}, tau={cfg.tau_abstain}).")
+    if agg.grade == "contradicted" and not has_grounded_reversal:
+        return _Outcome("GRADED", "unsupported-for-the-claim", False, False,
+                        "Reversal not grounded: no surviving refuter direction_reversal span shows "
+                        "the SOURCE's finding is opposite in direction, so a 'contradicted' verdict "
+                        "would rest on rhetoric — downgraded to unsupported-for-the-claim (the SOURCE "
+                        "fails to support the claim rather than affirmatively contradicting it).",
+                        reversal_downgraded=True)
     return _Outcome("GRADED", agg.grade, False, False,
                     agg.rationale or "Graded from the adversarial supporter/refuter exchange.")
 
@@ -747,12 +811,31 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     # 3. Aggregate + decide outcome + confidence tier.
     agg = _aggregate_rounds(critic_rounds, cfg)
     has_evidence = bool(sup_points or ref_grade_points)
-    outcome = _decide_outcome(agg, has_evidence, rounds_run, cfg)
-    tier = "low" if outcome.status != "GRADED" else _confidence_tier(agg, cfg)
+    # A 'contradicted' verdict must rest on a GROUNDED opposite-direction span: a refuter
+    # `direction_reversal` point that survived the verbatim guard. Checked over the PRE-dedup union
+    # (ref_grade_all) so a duplicate-quote dedup (which keys on quote+objection, ignoring the tag)
+    # can never hide a real reversal and cause a spurious downgrade.
+    has_grounded_reversal = any(
+        (p.get("distortion_type") or p.get("failure_mode") or "").strip().lower() == "direction_reversal"
+        for p in ref_grade_all)
+    outcome = _decide_outcome(agg, has_evidence, rounds_run, cfg, has_grounded_reversal)
+    # On a guard downgrade the emitted grade (unsupported-for-the-claim) is NOT the modal vote
+    # (contradicted), so report confidence for the grade actually emitted — the fraction of rounds
+    # that voted it — instead of the (high) agreement on the overridden contradicted vote. The raw
+    # vote stays visible in evidence.self_consistency.ordinal_distribution for audit.
+    finding_agg = agg
+    if outcome.reversal_downgraded and agg.n_valid:
+        dn_idx = ORDINAL_INDEX[outcome.verdict]
+        by_idx = {ORDINAL_INDEX[g]: c for g, c in agg.ordinal_distribution.items() if g in ORDINAL_INDEX}
+        dn_exact = by_idx.get(dn_idx, 0) / agg.n_valid
+        dn_adj = sum(c for i, c in by_idx.items() if abs(i - dn_idx) <= 1) / agg.n_valid
+        finding_agg = replace(agg, grade=outcome.verdict, grade_index=dn_idx,
+                              a_exact=dn_exact, a_adj=dn_adj)
+    tier = "low" if outcome.status != "GRADED" else _confidence_tier(finding_agg, cfg)
 
     # 4. Substantive finding (§6 evidence keys) + assemble the 4 axes.
     substantive = _build_substantive_finding(
-        agg, outcome, tier, sup_points, ref_grade_points, ref_rollup_points,
+        finding_agg, outcome, tier, sup_points, ref_grade_points, ref_rollup_points,
         sup_discarded_total, ref_discarded_total, rounds_run, cfg, corpus_label,
         critic_out_tokens)
     findings = [retr, spec, popn, substantive]
@@ -779,6 +862,10 @@ def adjudicate(g: GroundedRecord, scope: ScopeFrame, claim_text: str = "", *,
     if ref_rollup_points:
         notes.append(f"Refuter noted {len(ref_rollup_points)} scope over-generalization point(s) — "
                      "routed to `overall`, never the substantive grade.")
+    if outcome.reversal_downgraded:
+        notes.append("Direction-reversal guard: the self-consistency vote favored 'contradicted' but "
+                     "no verbatim refuter direction_reversal span grounded it — downgraded to "
+                     "'unsupported-for-the-claim' (a reversal needs grounded opposition, not rhetoric).")
     if outcome.non_substantiating:
         notes.append("Non-substantiating citation (method/background/passing) — off the support "
                      "scale (Trap 2); recorded so it is not scored as a graded prediction.")

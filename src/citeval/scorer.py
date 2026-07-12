@@ -36,7 +36,7 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from .adjudicator import AdjudicationConfig
+from .adjudicator import AdjudicationConfig, debug_raw_enabled
 from .prompts import NON_SUBSTANTIATING, NOT_ENOUGH_INFO, ORDINAL_GRADES, ORDINAL_INDEX
 from .slice_runner import EVAL_PATH, graded_enabled, run_slice
 
@@ -621,7 +621,7 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
           out_dir: str | Path | None = None, limit: int | None = None, fresh: bool = False,
           progress: bool = False, verbose: bool = False, client=None, config=None,
           version: str = "", recalibration=None, corpus_label: str = "",
-          results_dir: str | Path | None = None) -> dict:
+          results_dir: str | Path | None = None, partial_run: bool = False) -> dict:
     """Score the corpus. When `graded`, per-case predictions are appended INCREMENTALLY to
     `<out_dir>/graded_predictions.jsonl` (flushed) so a Ctrl-C never loses completed cases; on the
     next run those case_ids are SKIPPED (resume) unless `fresh`. `limit` scores only the first N
@@ -681,6 +681,11 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
             prior = done.get(cid) if graded else None
             resumed = bool(prior) and prior.get("status") != "ERROR"
             use_graded = graded and not resumed
+            if resumed and debug_raw_enabled():
+                # The triad is NOT re-run for a resumed case, so no raw transcripts are produced.
+                # Warn loudly rather than leave the operator wondering why outputs/debug/<case> is empty.
+                _log(f"[{i}/{n}] {cid} CITEVAL_DEBUG_RAW set but case is RESUMED — no transcripts will "
+                     "be dumped; pass --fresh (ideally with --only + a scratch --out) to force a re-grade.")
             if progress:
                 _log(f"[{i}/{n}] {cid} start" + (" (resumed — reuse stored prediction)" if resumed else ""))
             case_config = config
@@ -690,6 +695,8 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
                     overrides["on_round"] = _round_hook(i, n, cid)
                 if recalibration is not None:   # RB3 opt-in map (fills evidence.calibration.note)
                     overrides["recalibration"] = recalibration
+                if debug_raw_enabled():         # CITEVAL_DEBUG_RAW: dump this case's raw transcripts
+                    overrides["debug_case_id"] = cid
                 if overrides:
                     case_config = replace(config or AdjudicationConfig(), **overrides)
             t0 = time.perf_counter()
@@ -768,10 +775,17 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
                                      version=version, gt_by_case=gt_by_case)
         rdir = Path(results_dir) if results_dir is not None else RESULTS_DIR
         rdir.mkdir(parents=True, exist_ok=True)
-        fname = f"{corpus_label or 'corpus'}_{version or 'unknown'}.jsonl".replace("/", "_")
+        # A partial run (--only / --limit) scored only a SUBSET, so it must NOT clobber the canonical
+        # full-corpus durable file (that would silently shrink the offline-scoring input for every
+        # other case). Write partial runs to a distinct `.partial` name instead.
+        partial = partial_run or limit is not None
+        marker = ".partial" if partial else ""
+        fname = f"{corpus_label or 'corpus'}_{version or 'unknown'}{marker}.jsonl".replace("/", "_")
         (rdir / fname).write_text(
             "\n".join(json.dumps(d, ensure_ascii=False) for d in durable) + "\n")
-        _log(f"[results] {len(durable)} full-verdict row(s) → {rdir / fname} (offline-scoring input)")
+        _log(f"[results] {len(durable)} full-verdict row(s) → {rdir / fname}"
+             + (" (PARTIAL subset — not the canonical full-corpus results)" if partial
+                else " (offline-scoring input)"))
 
     return aggregate_metrics(rows, graded_records, errors, graded=graded, version=version)
 
@@ -1082,6 +1096,8 @@ def main() -> None:
     ap.add_argument("--emit-calibration-sample", dest="emit_sample", nargs="?", type=int,
                     const=30, help="write a stratified N-case (default 30) human spot-check manifest")
     ap.add_argument("--limit", type=int, help="score only the first N cases (smoke test)")
+    ap.add_argument("--only", help="comma-separated case_ids to score (e.g. 'Ce11,A27'); the rest "
+                    "of the corpus is skipped. Useful for a targeted live re-run of specific cases.")
     ap.add_argument("--fresh", action="store_true",
                     help="ignore any existing graded_predictions.jsonl and recompute from scratch")
     ap.add_argument("-v", "--verbose", action="store_true",
@@ -1115,6 +1131,12 @@ def main() -> None:
 
     corpus_path = Path(args.corpus) if args.corpus else EVAL_PATH
     cases = _load_corpus(corpus_path)
+    if args.only:
+        wanted = {c.strip() for c in args.only.split(",") if c.strip()}
+        cases = [c for c in cases if c.get("case_id", c.get("cited_pmid")) in wanted]
+        missing = wanted - {c.get("case_id", c.get("cited_pmid")) for c in cases}
+        _log(f"[only] restricting to {len(cases)} case(s): {', '.join(sorted(wanted))}"
+             + (f" (not in corpus: {', '.join(sorted(missing))})" if missing else ""))
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -1144,7 +1166,8 @@ def main() -> None:
 
     res = score(cases, graded=graded, references=references, out_dir=out, limit=args.limit,
                 fresh=args.fresh, progress=graded, verbose=verbose, version=version,
-                recalibration=recal_fn, corpus_label=_corpus_label(corpus_path))
+                recalibration=recal_fn, corpus_label=_corpus_label(corpus_path),
+                partial_run=bool(args.only))
     (out / "scorecard.md").write_text(render_scorecard(res))
     (out / "scorecard.json").write_text(json.dumps(
         {k: v for k, v in res.items() if k != "rows"} | {"rows": res["rows"]}, indent=2))

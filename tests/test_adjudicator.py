@@ -14,8 +14,10 @@ abstention; the verbatim guard; Opus-on-every-call; §6 evidence keys; `Verdict`
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 
 # Make the `citeval` package importable without installation.
@@ -818,6 +820,187 @@ class TestOutputTokenCapture(unittest.TestCase):
         so existing str-only callers/mocks are unaffected."""
         self.assertTrue(hasattr(A.AnthropicModelClient, "complete"))
         self.assertTrue(hasattr(A.AnthropicModelClient, "complete_with_usage"))
+
+
+# ----------------------------------------------------------------------------------
+# Direction-reversal guard: `contradicted` — the most severe grade — must rest on a GROUNDED
+# opposite-direction span (a surviving refuter direction_reversal point). Without one the
+# reversal is rhetoric and is downgraded to unsupported-for-the-claim (one ordinal step). This is
+# the mechanism fix for the confident direction-reversal tail (e.g. Ce11): a coexisting minor
+# inverse or bare critic assertion can no longer confidently reverse direction.
+# ----------------------------------------------------------------------------------
+# A verbatim refuter point tagged direction_reversal (survives the verbatim guard; grade-routed).
+REF_REVERSAL = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                            "objection": "the SOURCE's primary finding runs opposite to the claim",
+                            "distortion_type": "direction_reversal", "routes_to": "grade"}]}
+# A verbatim grade-routed refuter point that is NOT a direction_reversal (over_certainty).
+REF_NONREVERSAL = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                               "objection": "overstates the certainty of the effect",
+                               "distortion_type": "over_certainty", "routes_to": "grade"}]}
+
+
+class TestDirectionReversalGuard(unittest.TestCase):
+    def _human_increase(self):
+        return human_record(), ScopeFrame(organism="Humans", direction="increase",
+                                          provenance="model-inferred", tier="high")
+
+    def test_contradicted_survives_with_grounded_reversal_span(self):
+        """A unanimous 'contradicted' vote BACKED by a surviving refuter direction_reversal span
+        stays contradicted — the guard only fires when the reversal is ungrounded."""
+        g, scope = self._human_increase()
+        fc = FakeClient({"points": []}, REF_REVERSAL, agree_rounds("contradicted", 0.9))
+        v = A.adjudicate(g, scope, claim_text="the drug worsens survival", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "contradicted")
+        self.assertFalse(any("Direction-reversal guard" in n for n in v.notes))
+
+    def test_contradicted_without_grounded_reversal_is_downgraded(self):
+        """A unanimous 'contradicted' vote with a grade-routed refuter objection that is NOT a
+        direction_reversal is downgraded to unsupported-for-the-claim — one ordinal step, with the
+        raw vote still visible in evidence for audit."""
+        g, scope = self._human_increase()
+        fc = FakeClient({"points": []}, REF_NONREVERSAL, agree_rounds("contradicted", 0.9))
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "unsupported-for-the-claim")   # downgraded, one step less severe
+        self.assertFalse(sub.evidence["abstained"])                  # still a graded verdict, not NEI
+        sc = sub.evidence["self_consistency"]
+        self.assertIn("contradicted", sc["ordinal_distribution"])    # RAW vote preserved for audit
+        # Confidence describes the grade ACTUALLY emitted (idx4), not the overridden contradicted vote:
+        # 0 rounds voted unsupported-for-the-claim → agreement 0.0, tier 'low' (a guard override is
+        # never emitted as confident — it must not surface as a confident-wrong prediction).
+        self.assertEqual(sc["grade_ordinal"], 4)                     # emitted grade's ordinal
+        self.assertEqual(sub.evidence["confidence"]["agreement"], 0.0)
+        self.assertEqual(sub.tier, "low")
+        self.assertTrue(any("Direction-reversal guard" in n for n in v.notes))
+
+    def test_guard_note_absent_when_contradicted_vote_abstains(self):
+        """Regression ([4]/[7]): the guard note fires ONLY on a real downgrade, never when a
+        contradicted-modal vote ABSTAINS (dispersed). Otherwise the audit trail self-contradicts
+        ('downgraded to unsupported' alongside 'Abstained')."""
+        g, scope = self._human_increase()
+        supporter = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                                 "rationale": "supports"}]}
+        rounds = ([{"grade": "contradicted", "confidence": 0.6}] * 4
+                  + [{"grade": "fully-supported", "confidence": 0.6}] * 3)   # g*=contradicted, dispersed
+        cfg = A.AdjudicationConfig(self_consistency_rounds=7, adaptive_early_stopping=False)
+        v = A.adjudicate(g, scope, claim_text="x",
+                         client=FakeClient(supporter, {"points": []}, rounds), config=cfg)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, NOT_ENOUGH_INFO)                          # abstained (dispersed)
+        self.assertFalse(any("Direction-reversal guard" in n for n in v.notes))  # NOT a downgrade
+        self.assertTrue(any("Abstained" in n for n in v.notes))
+
+    def test_contradicted_with_only_supporter_evidence_is_downgraded(self):
+        """The Ce11-adjacent shape: a grounded SUPPORTING finding coexists and the refuter surfaces no
+        direction_reversal, yet the critic votes contradicted. With no grounded opposition span the
+        reversal is unproven → downgrade (a flat contradiction cannot stand beside grounded support)."""
+        g, scope = self._human_increase()
+        supporter = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                                 "rationale": "the SOURCE reports the very benefit the claim asserts"}]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds("contradicted", 0.9))
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "unsupported-for-the-claim")
+        self.assertTrue(any("Direction-reversal guard" in n for n in v.notes))
+
+    def test_guard_does_not_touch_non_contradicted_grades(self):
+        """The guard is scoped to 'contradicted' only: a unanimous non-contradicted grade with no
+        reversal span is unaffected."""
+        g, scope = self._human_increase()
+        supporter = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                                 "rationale": "supports the survival-benefit claim"}]}
+        fc = FakeClient(supporter, {"points": []}, agree_rounds("partially-supported", 0.9))
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "partially-supported")
+        self.assertFalse(any("Direction-reversal guard" in n for n in v.notes))
+
+    def test_refuter_failure_mode_key_also_recognized_as_reversal(self):
+        """`direction_reversal` may arrive under either `distortion_type` or `failure_mode`
+        (mirrors _routes_to_grade); either grounds the contradicted verdict."""
+        g, scope = self._human_increase()
+        ref = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                           "objection": "opposite direction", "failure_mode": "direction_reversal",
+                           "routes_to": "grade"}]}
+        fc = FakeClient({"points": []}, ref, agree_rounds("contradicted", 0.9))
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "contradicted")
+
+
+# ----------------------------------------------------------------------------------
+# Raw-transcript debug dump (CITEVAL_DEBUG_RAW=1): each round's supporter/refuter/critic RAW
+# text is written to outputs/debug/<case>/r<round>_<role>.txt — diagnostic only, never affects
+# grading, never runs unless the env flag is set AND a debug_case_id is configured.
+# ----------------------------------------------------------------------------------
+class TestDebugRawDump(unittest.TestCase):
+    def setUp(self):
+        self._prev_root = A._DEBUG_ROOT
+        self._prev_env = os.environ.get("CITEVAL_DEBUG_RAW")
+        self._tmp = tempfile.TemporaryDirectory()
+        A._DEBUG_ROOT = pathlib.Path(self._tmp.name)
+
+    def tearDown(self):
+        A._DEBUG_ROOT = self._prev_root
+        if self._prev_env is None:
+            os.environ.pop("CITEVAL_DEBUG_RAW", None)
+        else:
+            os.environ["CITEVAL_DEBUG_RAW"] = self._prev_env
+        self._tmp.cleanup()
+
+    def test_dump_writes_each_round_and_role_when_enabled(self):
+        os.environ["CITEVAL_DEBUG_RAW"] = "1"
+        cfg = A.AdjudicationConfig(self_consistency_rounds=2, min_valid_rounds=1,
+                                   adaptive_early_stopping=False, debug_case_id="Ce11")
+        A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                     client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=2)), config=cfg)
+        case_dir = A._DEBUG_ROOT / "Ce11"
+        names = sorted(p.name for p in case_dir.glob("*.txt"))
+        self.assertEqual(names, ["r1_critic.txt", "r1_refuter.txt", "r1_supporter.txt",
+                                 "r2_critic.txt", "r2_refuter.txt", "r2_supporter.txt"])
+        # The dumped text is the RAW model output (the supporter JSON), not the parsed dict.
+        self.assertIn("significantly increased their survival",
+                      (case_dir / "r1_supporter.txt").read_text())
+
+    def test_dump_is_noop_without_env_flag(self):
+        os.environ.pop("CITEVAL_DEBUG_RAW", None)
+        cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                   adaptive_early_stopping=False, debug_case_id="Ce11")
+        A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                     client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=1)), config=cfg)
+        self.assertFalse((A._DEBUG_ROOT / "Ce11").exists())
+
+    def test_dump_is_noop_without_debug_case_id(self):
+        os.environ["CITEVAL_DEBUG_RAW"] = "1"
+        cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)   # no debug_case_id
+        A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                     client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=1)), config=cfg)
+        self.assertEqual(list(A._DEBUG_ROOT.glob("**/*.txt")), [])
+
+    def test_malformed_case_id_cannot_escape_debug_root(self):
+        """A malformed case_id of '.' or '..' must NOT resolve to the debug root or its parent —
+        the sanitizer drops '.' so traversal is impossible; files stay under a per-case subdir."""
+        os.environ["CITEVAL_DEBUG_RAW"] = "1"
+        for bad in ("..", ".", "../../etc"):
+            cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                       adaptive_early_stopping=False, debug_case_id=bad)
+            A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
+                         client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=1)), config=cfg)
+        # Every written file lives strictly BELOW _DEBUG_ROOT in a real subdirectory (no file dumped
+        # directly into the root or above it).
+        for p in A._DEBUG_ROOT.glob("**/*.txt"):
+            self.assertEqual(p.parent.parent, A._DEBUG_ROOT, p)   # exactly <root>/<case>/<file>
+            self.assertNotIn("..", p.parts)
+
+    def test_debug_raw_enabled_fails_closed_on_off_spellings(self):
+        for off in ("", "0", "false", "no", "off", "none", "  OFF  "):
+            os.environ["CITEVAL_DEBUG_RAW"] = off
+            self.assertFalse(A.debug_raw_enabled(), off)
+        for on in ("1", "true", "yes", "on"):
+            os.environ["CITEVAL_DEBUG_RAW"] = on
+            self.assertTrue(A.debug_raw_enabled(), on)
 
 
 if __name__ == "__main__":
