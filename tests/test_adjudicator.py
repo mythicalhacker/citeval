@@ -292,14 +292,18 @@ class TestAbstention(unittest.TestCase):
     def test_minority_non_substantiating_with_unparseable_rounds_does_not_promote(self):
         """The NA majority bar is ceil(rounds_run/2), NOT ceil(n_parsed/2): 3 NON_SUBSTANTIATING
         + 4 unparseable of 7 samples is a minority → abstain, not a promotion to the distinct
-        NON_SUBSTANTIATING bucket (regression for the shrunken-denominator bug)."""
+        NON_SUBSTANTIATING bucket (regression for the shrunken-denominator bug). The 4 truncated
+        rounds each resample the critic once (WO-C4 fix), so the mock scripts extra unparseable
+        responses to feed the retries; the 4 rounds still fail → counted as n_parse_failed=4."""
         g, scope = human_record(), ScopeFrame(organism="Humans", provenance="model-inferred")
-        rounds = [{"grade": NON_SUBSTANTIATING, "confidence": 0.7}] * 3 + ["not json"] * 4
+        # 8 "not json" entries feed the 4 unparseable rounds' first-call + one resample each.
+        rounds = [{"grade": NON_SUBSTANTIATING, "confidence": 0.7}] * 3 + ["not json"] * 8
         cfg = A.AdjudicationConfig(self_consistency_rounds=7, adaptive_early_stopping=False)
         v = A.adjudicate(g, scope, claim_text="x", client=FakeClient(SUP_OK, REF_OK, rounds), config=cfg)
         sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
         self.assertEqual(sub.verdict, NOT_ENOUGH_INFO)          # abstained, NOT non-substantiating
         self.assertFalse(sub.evidence["non_substantiating"])
+        self.assertEqual(sub.evidence["self_consistency"]["n_parse_failed"], 4)  # visible, not silent
 
     def test_adjacent_only_split_does_not_abstain(self):
         """A 2/2/3/3-style split (all mass within ±1 of g*) is ordinal boundary noise — resolve
@@ -645,19 +649,175 @@ class TestRoundHook(unittest.TestCase):
         seen: list[int] = []
         cfg = A.AdjudicationConfig(self_consistency_rounds=3, min_valid_rounds=1,
                                    adaptive_early_stopping=False,
-                                   on_round=lambda rn, cr: seen.append(rn))
+                                   on_round=lambda rn, cr, ot: seen.append(rn))
         A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
                      client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=3)), config=cfg)
         self.assertEqual(seen, [1, 2, 3])
 
     def test_raising_hook_never_crashes_adjudication(self):
-        def _boom(rn, cr):
+        def _boom(rn, cr, ot):
             raise RuntimeError("hook should be swallowed")
         cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
                                    adaptive_early_stopping=False, on_round=_boom)
         v = A.adjudicate(animal_only_record(), humans_scope(), claim_text="x",
                          client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=1)), config=cfg)
         self.assertFalse(v.stub)
+
+
+# ----------------------------------------------------------------------------------
+# Critic truncation resilience (WO-C4 fix): grade-last JSON must fit the output cap, a
+# truncated round is VISIBLE as n_parse_failed (not a silent abstention), and a lone None
+# critic round is resampled once before being counted invalid.
+# ----------------------------------------------------------------------------------
+# A truncated evidence-first/grade-last response: valid-looking JSON that stops before the
+# closing brace (exactly what a 500-token cap produced), so _parse_json returns None.
+TRUNCATED_CRITIC = ('{"reasoning": "the source reports a benefit bearing on the claim", '
+                    '"decisive_spans": ["significantly increased their survival"], '
+                    '"boundary_test_fired": "hedge-preservation", "grade": "partially-supported"')
+
+
+class TestTruncationResilience(unittest.TestCase):
+    def test_token_caps_fit_grade_last_json(self):
+        """Root-cause guard: the critic cap must fit the evidence-first/grade-last JSON PAST its
+        closing brace, and advocates must not truncate mid-quote when citing full text. Raised to a
+        safely NON-clipping 4000 (WO-C4 §3) so measured usage.output_tokens reflects the real
+        output length, not the cap. The config defaults mirror the module constants."""
+        self.assertGreaterEqual(A.MAX_TOKENS_CRITIC, 4000)
+        self.assertGreaterEqual(A.MAX_TOKENS_ADVOCATE, 1200)
+        self.assertEqual(A.AdjudicationConfig().max_tokens_critic, A.MAX_TOKENS_CRITIC)
+        self.assertEqual(A.AdjudicationConfig().max_tokens_advocate, A.MAX_TOKENS_ADVOCATE)
+
+    def test_truncated_critic_counted_as_parse_failed_not_dropped(self):
+        """A critic that truncates every round (incl. the resample) parses to None and must be
+        COUNTED as n_parse_failed — the bug that hid a 500-token truncation behind a clean
+        ABSTAINED with n_samples=0 and no signal that the model actually replied."""
+        g, scope = human_record(), ScopeFrame(organism="Humans", provenance="model-inferred")
+        cfg = A.AdjudicationConfig(self_consistency_rounds=3, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        fc = FakeClient(SUP_OK, REF_OK, [TRUNCATED_CRITIC])   # every critic call truncates
+        v = A.adjudicate(g, scope, claim_text="x", client=fc, config=cfg)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        sc = sub.evidence["self_consistency"]
+        self.assertEqual(sc["n_parse_failed"], 3)                       # all 3 rounds failed to parse
+        self.assertEqual(sub.evidence["confidence"]["n_samples"], 0)    # no valid ordinal rounds
+        self.assertEqual(sub.verdict, NOT_ENOUGH_INFO)                  # abstains, but the reason is legible
+        self.assertEqual(fc.roles.count("critic"), 6)                  # 3 rounds × (1 call + 1 resample)
+        self.assertTrue(any("parse failure" in n or "unparseable" in n for n in v.notes))
+
+    def test_none_critic_round_resampled_once_and_can_recover(self):
+        """A critic round that returns None is resampled ONCE at the same settings; if the resample
+        parses (a transient truncation clearing), the round is GRADED — coverage is restored rather
+        than lost to a single bad draw. One round, script [truncated, valid] → 2 critic calls."""
+        g = human_record()
+        scope = ScopeFrame(organism="Humans", direction="increase", provenance="model-inferred", tier="high")
+        supporter = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                                 "rationale": "supports the survival-benefit claim"}]}
+        valid = {"grade": "fully-supported", "confidence": 0.9, "grade_rationale_last": "clear support"}
+        cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        fc = FakeClient(supporter, {"points": []}, [TRUNCATED_CRITIC, valid])
+        v = A.adjudicate(g, scope, claim_text="x", client=fc, config=cfg)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "fully-supported")               # recovered → graded, not abstained
+        self.assertFalse(sub.evidence["abstained"])
+        self.assertEqual(fc.roles.count("critic"), 2)                  # first (None) + exactly one resample
+        self.assertEqual(sub.evidence["self_consistency"]["n_parse_failed"], 0)   # round parsed on retry
+        self.assertEqual(sub.evidence["self_consistency"]["rounds_valid"], 1)
+
+    def test_resample_is_at_most_once_per_round(self):
+        """The retry is bounded: a round whose first call AND resample both truncate is NOT retried
+        again (at most one resample per round) — 2 rounds → exactly 4 critic calls, both fail."""
+        g, scope = human_record(), ScopeFrame(organism="Humans", provenance="model-inferred")
+        cfg = A.AdjudicationConfig(self_consistency_rounds=2, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        fc = FakeClient(SUP_OK, REF_OK, [TRUNCATED_CRITIC])
+        A.adjudicate(g, scope, claim_text="x", client=fc, config=cfg)
+        self.assertEqual(fc.roles.count("critic"), 4)                  # 2 rounds × (1 + 1), never more
+
+    def test_unhashable_critic_grade_is_counted_not_fatal(self):
+        """A critic that emits well-formed JSON with an UNHASHABLE grade ({"grade": []} / {"grade":
+        {}}) must NOT crash the case at the `grade in ORDINAL_INDEX` hash lookup (that would abort all
+        four axes). It falls through to n_parse_failed and the case abstains legibly. Default config
+        keeps early-stopping ON, so the `_unanimous_ordinal` hash lookup is exercised too."""
+        g, scope = human_record(), ScopeFrame(organism="Humans", provenance="model-inferred")
+        fc = FakeClient(SUP_OK, REF_OK, [{"grade": []}, {"grade": {}}])   # unhashable grade values
+        v = A.adjudicate(g, scope, claim_text="x", client=fc)             # default cfg: early-stopping ON
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, NOT_ENOUGH_INFO)
+        self.assertEqual(sub.evidence["confidence"]["n_samples"], 0)      # no valid ordinal rounds
+        self.assertGreater(sub.evidence["self_consistency"]["n_parse_failed"], 0)   # counted, not crashed
+
+
+# ----------------------------------------------------------------------------------
+# Cap-from-data (WO-C4 §3): the critic's SDK usage.output_tokens is captured per round so the
+# real output-length distribution can set the production cap; a mock without usage degrades to None.
+# ----------------------------------------------------------------------------------
+class UsageClient:
+    """Model client exposing `complete_with_usage` (like the real SDK) — returns (text, out_tok).
+    The critic responses cycle by call count so a resample can serve a different (value, out_tok)."""
+
+    def __init__(self, supporter, refuter, critic_pairs):
+        self._s, self._r = supporter, refuter
+        self._pairs = list(critic_pairs)   # [(value, out_tok), ...]
+        self._i = 0
+
+    def complete_with_usage(self, *, model, system, user, max_tokens, temperature=1.0):
+        if system.startswith("You are the SUPPORTER"):
+            return json.dumps(self._s), 40
+        if system.startswith("You are the REFUTER"):
+            return json.dumps(self._r), 40
+        value, out_tok = self._pairs[self._i % len(self._pairs)]
+        self._i += 1
+        text = value if isinstance(value, str) else json.dumps(value)
+        return text, out_tok
+
+
+class TestOutputTokenCapture(unittest.TestCase):
+    def test_critic_output_tokens_captured_per_round(self):
+        """usage.output_tokens is recorded per round in evidence.self_consistency.output_tokens."""
+        g = human_record()
+        scope = ScopeFrame(organism="Humans", provenance="model-inferred", tier="high")
+        graded = {"grade": "fully-supported", "confidence": 0.9, "grade_rationale_last": "ok"}
+        client = UsageClient(SUP_OK, REF_OK, [(graded, 347)])
+        cfg = A.AdjudicationConfig(self_consistency_rounds=3, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        v = A.adjudicate(g, scope, claim_text="x", client=client, config=cfg)
+        sc = {f.axis: f for f in v.axis_findings}["substantive_support"].evidence["self_consistency"]
+        self.assertEqual(sc["output_tokens"], [347, 347, 347])
+
+    def test_resample_captures_the_kept_responses_usage(self):
+        """When round 1's first critic draw truncates (None) and the resample parses, the stored
+        out_tok is the RESAMPLE's — the usage reflects the response we actually kept, not the draw
+        we threw away."""
+        g = human_record()
+        scope = ScopeFrame(organism="Humans", direction="increase", provenance="model-inferred", tier="high")
+        supporter = {"points": [{"quote": "prolonged progression-free survival and overall survival",
+                                 "rationale": "supports"}]}
+        valid = {"grade": "fully-supported", "confidence": 0.9, "grade_rationale_last": "ok"}
+        client = UsageClient(supporter, {"points": []}, [(TRUNCATED_CRITIC, 10), (valid, 99)])
+        cfg = A.AdjudicationConfig(self_consistency_rounds=1, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        v = A.adjudicate(g, scope, claim_text="x", client=client, config=cfg)
+        sub = {f.axis: f for f in v.axis_findings}["substantive_support"]
+        self.assertEqual(sub.verdict, "fully-supported")                 # recovered on the resample
+        self.assertEqual(sub.evidence["self_consistency"]["output_tokens"], [99])
+
+    def test_mock_without_usage_degrades_to_none(self):
+        """A mock client that only implements complete()->str (no usage) must not crash: the captured
+        output_tokens degrade to None per round (guard for mock clients without usage, WO-C4 §3)."""
+        g, scope = human_record(), ScopeFrame(organism="Humans", provenance="model-inferred", tier="high")
+        cfg = A.AdjudicationConfig(self_consistency_rounds=2, min_valid_rounds=1,
+                                   adaptive_early_stopping=False)
+        v = A.adjudicate(g, scope, claim_text="x",
+                         client=FakeClient(SUP_OK, REF_OK, agree_rounds(n=2)), config=cfg)
+        sc = {f.axis: f for f in v.axis_findings}["substantive_support"].evidence["self_consistency"]
+        self.assertEqual(sc["output_tokens"], [None, None])
+
+    def test_complete_backcompat_still_returns_str(self):
+        """The real client keeps a text-only complete()->str seam delegating to complete_with_usage,
+        so existing str-only callers/mocks are unaffected."""
+        self.assertTrue(hasattr(A.AnthropicModelClient, "complete"))
+        self.assertTrue(hasattr(A.AnthropicModelClient, "complete_with_usage"))
 
 
 if __name__ == "__main__":
