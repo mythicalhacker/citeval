@@ -13,6 +13,7 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ — for the cache-seed helper
 
 # Import the docs builder by path (it is not an installed module).
 _spec = importlib.util.spec_from_file_location("build_showcase", _ROOT / "docs" / "build_showcase.py")
@@ -20,6 +21,13 @@ build_showcase = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(build_showcase)
 
 import citeval.grounding as grounding  # noqa: E402
+from _ncbi_cache_fixture import seed_ncbi_cache  # noqa: E402
+
+# build_cards() drives the real grounding path for the four showcase papers. Warm its cache from
+# committed fixtures so the build is hermetic with no network and no warm dev cache (e.g. a fresh
+# CI checkout, where src/citeval/.cache/ is gitignored and absent). The tests that assert offline
+# behaviour make any network call raise; this seeding is pure local file I/O, no network.
+seed_ncbi_cache()
 
 
 def _axis(verdict, axis):
@@ -138,6 +146,19 @@ def test_html_escapes_dynamic_content():
     card["claim"] = "effect of A <b>and</b> B on outcome"
     page = build_showcase.reporting.render_showcase_page([card])
     assert "<b>and</b>" not in page and "&lt;b&gt;and&lt;/b&gt;" in page
+
+
+# --------------------------------------------------------------------------- unittest discovery
+def load_tests(loader, standard_tests, pattern):
+    """`unittest discover` hook. This module is pytest-style (plain ``test_*`` functions, no
+    ``unittest.TestCase``), so ``discover`` would otherwise collect **0** here even though every
+    test passes. Wrap each module-level ``test_*`` callable in a ``FunctionTestCase`` so it runs
+    under ``make test``. The standalone ``_run_all`` runner and pytest collection are unaffected."""
+    import unittest
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            standard_tests.addTest(unittest.FunctionTestCase(fn))
+    return standard_tests
 
 
 # --------------------------------------------------------------------------- standalone runner
