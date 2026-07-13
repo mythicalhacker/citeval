@@ -38,9 +38,11 @@ DEFAULT_PREDICTIONS = WORKSPACE / "outputs" / "scorecard" / "graded_predictions.
 DEFAULT_REFERENCE = WORKSPACE / "corpus" / "calibration" / "graded_reference_v2.jsonl"
 DEFAULT_MAP_PATH = WORKSPACE / "outputs" / "calibration_map.json"
 
-# The reference is the DESIGNATED TRUTH (human / decider-corrected), never model-generated — the
-# whole point of an external reference is to avoid the model grading its own homework. Only grades on
-# the 0-5 ordinal are fittable; NEI / N/A references are non-graded and excluded.
+# The reference is the DESIGNATED, INDEPENDENT reference (decider-corrected), independent of the
+# grader — never the grader's own output. The point of an external reference is to avoid the model
+# grading its own homework; today it is an independent AI reviewer (Claude Science), not yet
+# human-certified. Only grades on the 0-5 ordinal are fittable; NEI / N/A references are non-graded
+# and excluded.
 _ORDINAL = frozenset(ORDINAL_GRADES)
 # A reference file may name its grade column differently depending on who authored it; accept the
 # common spellings so a hand-authored or pipeline-emitted reference joins without a schema fixup.
@@ -267,6 +269,10 @@ def _code_version() -> str:
         from .scorer import code_version
         return code_version()
     except Exception:
+        # Swallows a failure of the lazy `from .scorer import code_version` (ImportError, or a
+        # partially initialized scorer module during a circular import). code_version() has its own
+        # guard and returns "unknown" rather than raising, so this except is effectively import-time
+        # only — the code-version stamp is best-effort provenance, never a reason to fail a fit.
         return "unknown"
 
 
@@ -378,7 +384,8 @@ def fit_report(dataset: Sequence[tuple[str, float, int]], *, reference_name: str
     L.append("C4 CONFIDENCE RECALIBRATION — Platt fit  P(correct) = sigmoid(A·a_exact + B)")
     L.append("=" * 84)
     L.append(f"code_version : {version}")
-    L.append(f"reference    : {reference_name} (decider-corrected; human truth, not model-generated)")
+    L.append(f"reference    : {reference_name} (decider-corrected; independent of the grader — not "
+             "the grader's own output; independent AI reviewer, not yet human-certified)")
     L.append(f"fit_on       : exact-correct   (correct = C4 grade == reference grade, EXACT)")
     L.append(f"n_fit        : {n} graded cases with an ordinal reference grade")
     L.append(f"fitted params: A = {a:.6f}   B = {b:.6f}")

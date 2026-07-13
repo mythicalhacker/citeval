@@ -145,7 +145,7 @@ class CalibrateGradedTests(unittest.TestCase):
 class SidecarAndSampleTests(unittest.TestCase):
     def test_load_references_only_substantive_grade_key(self):
         """Anti-circularity: only `substantive_grade` is accepted. A bare `grade` key (the shape
-        of the scorer's OWN model predictions) must NOT be ingested as a human reference."""
+        of the scorer's OWN model predictions) must NOT be ingested as its own reference."""
         cases = [{"case_id": "A01", "substantive_grade": "fully-supported"},
                  {"case_id": "A02", "substantive_grade": "not-a-grade"},        # invalid → ignored
                  {"case_id": "A03", "grade": "contradicted"},                   # model-key → ignored
