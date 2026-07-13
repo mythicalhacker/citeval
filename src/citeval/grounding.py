@@ -15,6 +15,7 @@ import json
 import os
 import re
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -33,13 +34,16 @@ _CACHE_DIR = Path(__file__).resolve().parent / ".cache"
 _MESH_CACHE = _CACHE_DIR / "mesh_tree.json"
 _EFETCH_DIR = _CACHE_DIR / "efetch_pubmed"   # cached raw efetch db=pubmed XML (rerun/scale speed)
 _EFETCH_PMC_DIR = _CACHE_DIR / "efetch_pmc"  # cached raw efetch db=pmc JATS XML, per PMID (full text)
+_EUROPEPMC_DIR = _CACHE_DIR / "europepmc_fulltext"  # cached Europe PMC full-text JATS, per PMID (SD-09)
 _PMC_IDCONV = "https://www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/"
+_EUROPEPMC_BASE = "https://www.ebi.ac.uk/europepmc/webservices/rest"  # SD-09 full-text fallback source
 
 _EMAIL = os.environ.get("NCBI_EMAIL", "citeval@example.org")
 _TOOL = os.environ.get("NCBI_TOOL", "citeval")
 _API_KEY = os.environ.get("NCBI_API_KEY", "")
 _MIN_INTERVAL = 0.11 if _API_KEY else 0.34   # NCBI: 10/s with key, 3/s without
 _last_call = [0.0]
+_throttle_lock = threading.Lock()   # serializes _throttle across the concurrent batch orchestrator
 
 SEX_DESCRIPTORS = {"Male", "Female"}
 
@@ -65,10 +69,18 @@ def _ws_norm(s: str) -> str:
 
 # --------------------------------------------------------------------------- net
 def _throttle() -> None:
-    dt = time.time() - _last_call[0]
-    if dt < _MIN_INTERVAL:
-        time.sleep(_MIN_INTERVAL - dt)
-    _last_call[0] = time.time()
+    """Space successive NCBI calls to the per-key rate limit.
+
+    Thread-safe: the batch orchestrator drives grounding concurrently, so the read-sleep-update of
+    the shared `_last_call` timestamp is serialized under `_throttle_lock`. The lock is intentionally
+    held across the sleep — that queues concurrent callers so the global min-interval is honored
+    across threads (parallelism must not let the aggregate call rate exceed NCBI's limit); without
+    it, two threads could read the same stale timestamp and both fire immediately."""
+    with _throttle_lock:
+        dt = time.time() - _last_call[0]
+        if dt < _MIN_INTERVAL:
+            time.sleep(_MIN_INTERVAL - dt)
+        _last_call[0] = time.time()
 
 
 # A single NCBI blip must not abort a long corpus run (WO-C4 resilience §1). EFetch/id-converter
@@ -137,8 +149,8 @@ def _resolve_pmcid(pmid: str) -> str | None:
         {"ids": str(pmid), "format": "json", "tool": _TOOL, "email": _EMAIL})
     try:
         recs = json.loads(_get(url)).get("records", [])
-    except Exception:
-        return None
+    except Exception:   # noqa: BLE001 — swallows `_get` net errors (URLError/timeout/IncompleteRead/
+        return None     # HTTPError, after its backoff is exhausted) + json.loads decode of a bad reply
     for r in recs:
         if str(r.get("pmid")) == str(pmid) and r.get("pmcid"):
             return r["pmcid"]
@@ -161,6 +173,56 @@ def _efetch_pmc_cached(pmid: str) -> bytes | None:
         return None
     data = _eutils("efetch.fcgi", db="pmc", id=str(pmcid).replace("PMC", ""), retmode="xml")
     fp.write_bytes(data)                # reached only on a successful fetch (else _eutils raised)
+    return data
+
+
+# ------------------------------------------------ full-text fallback (Europe PMC, SD-09)
+# NCBI PMC EFetch collapses to abstract-only whenever the cited paper is not in NCBI PMC OR is in
+# PMC with no <body> deposited (~21/45 held-out cases). Europe PMC indexes a broader open-access
+# full-text corpus and serves it as raw JATS at …/{source}/{id}/fullTextXML — the SAME shape the
+# primary path's walker (`_jats_body_sections` + `select_budgeted_fulltext`) parses, so the verbatim
+# guard is honored identically (invariant #6: raw JATS, <xref> preserved). This is a strict FALLBACK:
+# tried only when the primary NCBI path yields no usable <body>, and entirely on the live path (it
+# reuses `_get`'s throttle/retry/backoff), so the offline gate is untouched.
+def _europepmc_pmcid(pmid: str) -> str | None:
+    """Resolve a PMID to a Europe-PMC full-text PMCID via its search API (SRC:MED lookup by EXT_ID).
+    Returns 'PMC…' ONLY when Europe PMC reports the article is in its full-text corpus
+    (`inEPMC == 'Y'`) and carries a PMCID; None otherwise (so we never build a dead fullTextXML URL).
+    Swallows network/parse errors (→ None) so the fallback never breaks grounding."""
+    q = urllib.parse.urlencode({"query": f"EXT_ID:{pmid} AND SRC:MED",
+                                "resultType": "lite", "format": "json", "pageSize": "1"})
+    try:
+        results = (json.loads(_get(f"{_EUROPEPMC_BASE}/search?{q}"))
+                   .get("resultList", {}).get("result", []))
+    except Exception:   # noqa: BLE001 — swallows `_get` net errors (after backoff) + json.loads decode
+        return None      # of a bad Europe PMC reply; the fallback is best-effort → give up quietly
+    for r in results:
+        if str(r.get("pmid")) == str(pmid) and r.get("inEPMC") == "Y" and r.get("pmcid"):
+            pmcid = str(r["pmcid"])
+            return pmcid if pmcid.upper().startswith("PMC") else f"PMC{pmcid}"
+    return None
+
+
+def _europepmc_fulltext_cached(pmid: str) -> bytes | None:
+    """Raw Europe PMC full-text JATS for a PMID, disk-cached by PMID (mirrors `_efetch_pmc_cached`).
+    Resolves the PMID→PMCID via Europe PMC first, then fetches …/PMC/{pmcid}/fullTextXML. Caches
+    SUCCESSFUL, non-empty fetches ONLY — a not-in-EPMC PMID, a non-open-access article (Europe PMC
+    404s fullTextXML), or a network failure is never cached, so it retries next run. Returns None
+    when Europe PMC has no servable full text."""
+    _EUROPEPMC_DIR.mkdir(parents=True, exist_ok=True)
+    fp = _EUROPEPMC_DIR / f"{pmid}.xml"
+    if fp.exists():
+        return fp.read_bytes()
+    pmcid = _europepmc_pmcid(pmid)
+    if not pmcid:
+        return None
+    try:
+        data = _get(f"{_EUROPEPMC_BASE}/PMC/{pmcid}/fullTextXML")
+    except Exception:   # noqa: BLE001 — fullTextXML 404s for non-OA articles + net errors (after
+        return None      # backoff); degrade to abstract-only rather than fabricate. Never cached.
+    if not data:
+        return None
+    fp.write_bytes(data)                # reached only on a successful, non-empty fetch
     return data
 
 
@@ -250,33 +312,63 @@ def select_budgeted_fulltext(sections: list[tuple[str, str]], body_fulltext: str
     return "\n\n".join(p for p in parts if p).strip()
 
 
-def fetch_full_text(pmid: str, abstract: str, errors: list[str] | None = None) -> tuple[str, str]:
-    """Best-effort budgeted full text for a PMID + its provenance ('pmc-jats:PMC…' or '').
-
-    Never raises and never fabricates: any failure (not in PMC, network error, unparseable XML,
-    no <body>) yields ('', '') — the honest empty value. Successful raw PMC XML is disk-cached."""
-    try:
-        xml = _efetch_pmc_cached(pmid)
-    except Exception as e:              # noqa: BLE001 — full text is best-effort; degrade to empty
-        if errors is not None:
-            errors.append(f"full_text fetch failed: {e}")
-        return "", ""
-    if not xml:
-        return "", ""
+def _budgeted_from_jats(xml: bytes, abstract: str, source_label: str,
+                        errors: list[str] | None) -> tuple[str, str]:
+    """Parse raw JATS bytes → (budgeted_fulltext, provenance) via the shared walker, or ('', '')
+    when there is no usable <body> (abstract-only / unparseable). `source_label` is the provenance
+    prefix ('pmc-jats' for the NCBI primary, 'europepmc-jats' for the SD-09 fallback) so a consumer
+    can tell which source grounded the text. Same normalization for both sources → the verbatim
+    guard is identical."""
     try:
         root = ET.fromstring(xml)
     except ET.ParseError as e:
         if errors is not None:
-            errors.append(f"full_text parse failed: {e}")
+            errors.append(f"full_text parse failed ({source_label}): {e}")
         return "", ""
     body_fulltext, sections = _jats_body_sections(root)
     if not body_fulltext:
-        return "", ""                   # abstract-only PMC record → honest empty full text
+        return "", ""                   # no <body> (abstract-only record) → honest empty full text
     budgeted = select_budgeted_fulltext(sections, body_fulltext, abstract)
     if not budgeted:
         return "", ""
     pmcid = _pmcid_from_xml(root)
-    return budgeted, (f"pmc-jats:{pmcid}" if pmcid else "pmc-jats")
+    return budgeted, (f"{source_label}:{pmcid}" if pmcid else source_label)
+
+
+def fetch_full_text(pmid: str, abstract: str, errors: list[str] | None = None) -> tuple[str, str]:
+    """Best-effort budgeted full text for a PMID + its provenance
+    ('pmc-jats:PMC…', 'europepmc-jats:PMC…', or '').
+
+    Primary source is raw NCBI PMC EFetch JATS (invariant #6). SD-09 fallback: when NCBI PMC yields
+    no usable <body> — the article is not in NCBI PMC, or is there abstract-only — try Europe PMC's
+    full-text REST (same JATS walker, same verbatim guard). Never raises and never fabricates: when
+    NEITHER source has a servable <body> (network error, unparseable XML, no body) the result is the
+    honest empty ('', ''). Successful raw XML from either source is disk-cached."""
+    # Primary: raw NCBI PMC EFetch JATS.
+    try:
+        xml = _efetch_pmc_cached(pmid)
+    except Exception as e:              # noqa: BLE001 — best-effort primary; degrade to the fallback
+        if errors is not None:
+            errors.append(f"full_text fetch failed (pmc): {e}")
+        xml = None
+    if xml:
+        budgeted, prov = _budgeted_from_jats(xml, abstract, "pmc-jats", errors)
+        if budgeted:
+            return budgeted, prov       # NCBI PMC had a usable body → done, no fallback needed
+
+    # Fallback (SD-09): Europe PMC full-text REST when NCBI PMC yields no usable <body>.
+    try:
+        ep_xml = _europepmc_fulltext_cached(pmid)
+    except Exception as e:              # noqa: BLE001 — best-effort fallback; degrade to honest empty
+        if errors is not None:
+            errors.append(f"full_text fallback fetch failed (europepmc): {e}")
+        ep_xml = None
+    if ep_xml:
+        budgeted, prov = _budgeted_from_jats(ep_xml, abstract, "europepmc-jats", errors)
+        if budgeted:
+            return budgeted, prov
+
+    return "", ""                       # neither source had a servable <body> → honest empty
 
 
 # ---------------------------------------------------------------------- MeSH tree
@@ -284,8 +376,8 @@ def _load_mesh_cache() -> dict:
     if _MESH_CACHE.exists():
         try:
             return json.loads(_MESH_CACHE.read_text())
-        except Exception:
-            return {}
+        except Exception:   # noqa: BLE001 — swallows a corrupt/partially-written cache (JSONDecodeError)
+            return {}       # or a read error (OSError) → start empty and rebuild from NCBI, never crash
     return {}
 
 
@@ -324,8 +416,8 @@ def _prefetch_trees(uis: list[str]) -> None:
     try:
         txt = _eutils("efetch.fcgi", db="mesh", id=",".join(uid_list),
                       retmode="text").decode("utf-8", "ignore")
-    except Exception:
-        return
+    except Exception:   # noqa: BLE001 — swallows `_eutils`/`_get` net+HTTP errors (after retries):
+        return          # leave the tree cache unfilled so it retries next run, never poison it empty
     by_idx: dict[int, str] = {}
     for ch in re.split(r"\n(?=\d+:\s)", txt.strip()):
         m = re.match(r"(\d+):", ch)
@@ -459,10 +551,11 @@ def _retraction(pmid: str, doi: str, parsed: dict) -> RetractionInfo:
 def ground(identifier: CitedIdentifier, *, with_full_text: bool = True) -> GroundedRecord:
     """Resolve + ground a cited paper into a fully metadata-grounded record.
 
-    When `with_full_text` is True (default) the cited paper's budgeted PMC full text is attached
-    (invariant #6: raw JATS from EFetch db=pmc, never a plain-text connector); it degrades to the
-    honest empty value when unavailable. Callers that never consume the full text (the offline
-    stub path) pass `with_full_text=False` to skip the extra PMC round-trip entirely."""
+    When `with_full_text` is True (default) the cited paper's budgeted full text is attached
+    (invariant #6: raw JATS, never a plain-text connector) — from NCBI PMC EFetch primarily, or the
+    Europe PMC full-text REST fallback (SD-09) when NCBI PMC has no body; it degrades to the honest
+    empty value when neither source has it. Callers that never consume the full text (the offline
+    stub path) pass `with_full_text=False` to skip the extra round-trip entirely."""
     errors: list[str] = []
     pmid = _resolve_to_pmid(identifier)
     parsed = _parse_pubmed_xml(_efetch_pubmed_cached(pmid))
@@ -497,7 +590,12 @@ def ground(identifier: CitedIdentifier, *, with_full_text: bool = True) -> Groun
         "retraction": "Retraction Watch registry x-checked vs efetch PublicationType + CommentsCorrections",
     }
     if full_text:
-        provenance["full_text"] = ("NCBI efetch db=pmc raw JATS <body> (budgeted: abstract + "
+        # Honest provenance: name the source that actually served the <body> (SD-09 may have
+        # supplied it from Europe PMC when NCBI PMC had none). Same raw-JATS budgeting either way.
+        _ft_source = ("Europe PMC full-text REST raw JATS <body>"
+                      if full_text_provenance.startswith("europepmc-jats")
+                      else "NCBI efetch db=pmc raw JATS <body>")
+        provenance["full_text"] = (f"{_ft_source} (budgeted: abstract + "
                                    "Results/Discussion/Conclusions, reference list dropped) — invariant #6")
 
     return GroundedRecord(
