@@ -43,10 +43,11 @@ broad-and-shallow, not simply better-vs-worse.
   model-inferred | stub-not-adjudicated` label on every axis finding is unusually disciplined
   self-disclosure.
 - **Measured, anti-circular calibration.** Confidence (self-consistency agreement across resampled
-  adjudication rounds) is checked against a reference that is human/decider-corrected and never
-  model-generated. citeval's own numbers — a graded axis at **0.90 quadratic-weighted kappa**
+  adjudication rounds) is checked against a reference that is decider-corrected and independent of
+  the grader (a separate full-text read; a human spot-check is still pending). citeval's own
+  numbers — a graded axis at **0.90 quadratic-weighted kappa**
   (within one level on every case), confidence that discriminates correctness (AUROC ≈ 0.64), and a
-  monotone Platt recalibration to a **leave-one-out ECE ≈ 0.08** (from a raw 0.34), all re-checked on
+  monotone Platt recalibration to a **leave-one-out ECE ≈ 0.08** (from a raw 0.32), all re-checked on
   a **45-case held-out set** — are a rare instance of a claim-verification system reporting whether
   its confidence is *honest*, not just whether its labels are accurate.
 - **A graded ordinal where the field is stuck at three classes.** SciFact, MultiVerS, and
