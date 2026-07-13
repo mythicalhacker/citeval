@@ -4,14 +4,28 @@
 > landed and `corpus/calibration/gate_thresholds.json` exists (thresholds v4). From the repo root:
 >
 > ```bash
-> make eval    # offline, no key, deterministic, <1s → metric | value | threshold | PASS/FAIL + exit code
+> make eval    # offline, no key, deterministic, <2s → metric | value | threshold | PASS/FAIL + exit code
 > ```
 >
-> Verified healthy baseline: retraction & scope precision 1.00, **scope recall 0.909** (in-domain,
-> un-propped), **QWK 0.90**, within-one-level **1.00**, recalibrated LOO-**ECE 0.08**, coverage 0.96,
-> **zero confident-but-wrong**; held-out (ext-45): retraction 1.00, scope recall 0.71. **The sections
-> below predate the gate landing and the C4 re-grade — where they quote older figures (QWK 0.70,
-> ECE 0.16, or "--gate not yet landed"), `make eval` and these numbers supersede them.**
+> **Replay, not re-derivation.** `make eval` (== `python -m citeval.eval`) **re-scores the frozen,
+> committed cal30 predictions** (`corpus/calibration/results_cal30.jsonl`) against
+> `graded_reference_v2` under the committed thresholds. It is a deterministic **regression gate over
+> frozen predictions** — it does **not** re-run the pipeline or re-grade any case: no NCBI, no Opus,
+> no `ANTHROPIC_API_KEY`. The **live re-derivation** — actually re-grading each case on Opus 4.8 —
+> is the separate, slow, keyed ladder in **§2**. §1 below is the same replay path as `make eval`, at
+> finer grain.
+>
+> Verified healthy baseline (= `make eval`): retraction & scope precision 1.00, **scope recall 0.909**
+> (in-domain, un-propped), coverage **0.96**, **QWK 0.90**, within-one-level **1.00**, raw ECE **0.32**
+> → recalibrated LOO-**ECE 0.08**, AUROC 0.64, **zero confident-but-wrong**; held-out (ext-45):
+> retraction 1.00, scope recall 0.71.
+>
+> **⚠️ The detailed sections below are a pre-regrade snapshot.** They predate the gate landing and the
+> committed C4 re-grade, and quote the *earlier* figures — coverage 1.00, QWK **0.70**, raw ECE
+> **0.34**, LOO-ECE **0.16**, AUROC **0.68**, ±1-adjacent 0.85, and "`--gate` not yet landed". Where
+> they differ from the baseline above, **`make eval` and the §3 "current" column supersede them**;
+> the pre-regrade numbers are kept as the methodology/provenance record. A live re-run of §1a/§1b
+> today reproduces the *tighter* numbers, not the captured ones — each such block says so inline.
 
 **TL;DR (offline calibration-only check, still valid)** — from `src/`:
 ```bash
@@ -59,10 +73,13 @@ verified against the current `argparse` definitions and, where noted, against a 
     full cal30 run: 30 rows = 27 `GRADED` + 1 `ABSTAINED` (Ch05, title/MeSH-only) + 1
     `NON_SUBSTANTIATING` (Ch15, background citation) + 1 `ERROR` (Bs09, a transient upstream 529
     "Overloaded" — infra, not a verdict, always excluded from every metric and retried on next run).
-  - `corpus/calibration/calibration_map.json` — last fitted Platt map (`A=3.0987, B=-2.375,
-    n_fit=27`).
-- No `gate_thresholds.json` exists anywhere in the repo today (checked). Don't invent a pass/fail
-  cutoff that isn't backed by a committed file — see §3.
+  - `corpus/calibration/calibration_map.json` — last fitted Platt map (post-regrade: `A=3.0248,
+    B=-2.3786, n_fit=27`, dated 2026-07-13).
+  - `corpus/calibration/gate_thresholds.json` — the committed, versioned gate thresholds
+    (`thresholds_version: 4`, `reference_version: graded_reference_v2`) that `make eval` /
+    `python -m citeval.eval` enforce. Hard floors/ceilings + a `baseline` block for the
+    zero-objective-regression guard. This is the committed cutoff file — don't invent an *ad hoc*
+    one; reseed it with `make baseline` after an intended, reviewed change (see §3).
 
 ---
 
@@ -84,17 +101,22 @@ Verified against `recalibrate.py`'s actual `argparse` (`--predictions`, `--refer
 `--reference-name` — nothing else). `recalibrate.py` never imports `grounding.py` or
 `adjudicator.py`; it only reads two JSONL files and fits a 2-parameter Platt curve by Newton's
 method. There is no code path here to a network call, an API key, or a model call. Live-timed just
-now: **0.12s** (`real 0m0.124s`), reproducing exactly:
+now against the committed post-regrade predictions: **~0.1s**, reproducing exactly (these are the
+current `make eval` numbers — see the pre-regrade note under the block):
 
 ```
-n_fit = 27
-[1] RAW ECE                = 0.3386
-[2] in-sample recal ECE    = 0.1425   (overstates calibration at small N)
-[3] leave-one-out ECE      = 0.1567   <<< the headline, honest number
-[4] AUROC raw = recalibrated = 0.684659   IDENTICAL ✓ (proves the monotone map never touched
+n_fit = 27           fitted params: A = 3.0248   B = -2.3786
+[1] RAW ECE                = 0.3175
+[2] in-sample recal ECE    = 0.0692   (overstates calibration at small N)
+[3] leave-one-out ECE      = 0.0787   <<< the headline, honest number
+[4] AUROC raw = recalibrated = 0.636364   IDENTICAL ✓ (proves the monotone map never touched
                                             discrimination or the emitted grade)
     exact-match grade accuracy = 0.5926
 ```
+> _Pre-regrade snapshot: before the committed C4 re-grade this same command read **RAW ECE 0.3386 /
+> LOO-ECE 0.1567 / AUROC 0.6847**. The re-grade tightened calibration (raw 0.34→0.32, LOO 0.16→0.08)
+> and lowered AUROC to 0.64; discrimination and exact-match are otherwise unchanged. Today's live run
+> reproduces the numbers above, matching `make eval`._
 It also (re)writes `outputs/calibration_map.json` at its default path — **not** the checked-in
 `corpus/calibration/calibration_map.json` snapshot. Pass `--out ../corpus/calibration/calibration_map.json`
 if you want to update that file in place instead of the scratch copy.
@@ -125,11 +147,16 @@ Verified against `scorer.py`'s actual `argparse` (`--graded`, `--corpus`, `--gra
 (`PREDICTIONS_FILE`) the resume logic looks for inside `--out` — it must be renamed exactly, not
 just copied under its original name.
 
-**Live-verified just now, with no `ANTHROPIC_API_KEY` set in the shell at all:** this ran in
-**3.2 seconds** and produced a full scorecard — 27/27 labeled cases graded (coverage 1.00),
-exact 0.593, ±1-adjacent 0.852, QWK 0.695, AUROC 0.685 (95% CI 0.50–0.86), Brier exact 0.305 /
-adjacent 0.131, retraction P/R/Spec 1.00/1.00/1.00, control specificity 9/9. One line said
-`Errors: 1 ... Bs09` — see the two caveats below; the run did not stop or need a key.
+**Runs with no `ANTHROPIC_API_KEY` set in the shell at all**, in a few seconds, and produces a full
+scorecard: retraction P/R/Spec 1.00/1.00/1.00, control specificity 9/9, plus the graded block. One
+line says `Errors: 1 ... Bs09` — see the two caveats below; the run does not stop or need a key.
+
+> _**Pre-regrade snapshot of the graded metrics.** When this section was written the same resume
+> read: coverage 1.00 (27/27), exact 0.593, ±1-adjacent 0.852, QWK 0.695, AUROC 0.685 (CI 0.50–0.86),
+> Brier 0.305/0.131. Against the committed post-regrade predictions a re-run today reproduces the
+> **`make eval` numbers**: coverage 0.96 (27 graded / 28 labeled — Ch05 now abstains), exact 0.593,
+> **±1-adjacent 1.00**, **QWK 0.90** (0.895), **AUROC 0.64** (0.636; CI 0.45–0.81), Brier 0.325/0.034.
+> The objective axes and the Bs09/caveat behaviour are unchanged. See §3's "current" column._
 
 **Caveat 1 — the objective-axis recompute is network-free today by incidental cache warmth, not
 by guarantee.** Every resumed (non-Opus) case still calls `ground()` fresh to recompute the
@@ -158,25 +185,33 @@ Bs22, Bp01 — implicit human-relevance claims with no lexical marker), which is
 floor, not the ~0.91 that `design/STATUS.md` reports for the original live-Opus-C3 run over the
 same 30 cases. Don't read a 0.80 here as a regression — see §3's gap table.
 
-### 1c. The clean fix (landing, not yet merged — do not run this today)
+### 1c. The clean gate — **landed. This is now the pass/fail command.**
 
-A parallel Claude Code lane is adding a `--gate` mode. Once it lands, treat
+The gate has landed, as its own offline module rather than a `scorer` flag. Use it directly:
 
 ```bash
-python -m citeval.scorer --graded --gate
+make eval                 # == python -m citeval.eval  → metric | value | threshold | PASS/FAIL, nonzero exit on breach
 ```
-as the pass/fail command for this whole section. **As of this writing it does not exist:**
-`python -m citeval.scorer --help` (verified live) lists only `--corpus, --graded,
---graded-reference, --recalibrate, --recalibration-map, --emit-calibration-sample, --limit,
---fresh, -v, --out` — running `--gate` today fails with `error: unrecognized arguments: --gate`.
-Confirm it has landed (re-check `--help`) before relying on it; until then, use §1a + §1b above.
-The real gap `--gate` (or an equivalent `--from-predictions` mode) should close: a way to compute
-`calibrate_graded()` directly from the joined predictions+reference files with **zero** calls to
-`run_slice()`/`ground()` — removing both caveats in §1b, not just the Opus-cost one.
+`python -m citeval.eval` computes the scorecard **directly from the joined durable
+predictions + reference files** (`results_cal30.jsonl` × `graded_reference_v2` × committed
+`gate_thresholds.json` v4) with **zero** calls to `run_slice()`/`ground()` — which is exactly the
+clean path this section anticipated: it removes **both** §1b caveats (no `ground()` recompute, no
+per-case Opus attempt), not just the Opus-cost one. It is the deterministic replay gate `make eval`
+runs after every change.
+
+`scorer` also grew the equivalent flags — `python -m citeval.scorer --help` now lists **`--gate`,
+`--gate-thresholds`, and `--from-predictions`** (verified live). Either entry point works; **`make
+eval` is the canonical one-liner** and what the §3 baseline below is measured with.
 
 ---
 
 ## 2. Full re-eval (after any C4 / grading code change)
+
+**This is the LIVE re-derivation — the opposite of §1 / `make eval`.** §1 and `make eval` *replay*
+frozen, committed predictions offline (a regression gate); this section actually **re-grades every
+case on live Opus 4.8**, producing new predictions. Run it only when the grading code changed and
+the frozen predictions are therefore stale; then re-freeze via `make regen-results` so `make eval`
+replays the new numbers.
 
 Trigger: any change to `adjudicator.py`, `prompts/*`, the RB1/RB2/RB3 rubric, or `claim_scope.py`
 where it affects scope detection. Slow, costs money (every call is live Opus 4.8 — never a
@@ -246,7 +281,7 @@ runs).
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| **Low coverage** (many `ABSTAINED`, few `GRADED`) | Either genuine abstention on thin evidence, or the critic's JSON got truncated before the closing brace (counted as a parse failure, not abstention) | Check the "coverage by evidence depth" block (full-text vs abstract-only) and the `-v`/`CITEVAL_PROGRESS=1` per-round log for `UNPARSED` lines. Genuine abstention on abstract-only evidence is expected and improves with full-text grounding (this is exactly what `design/STATUS.md` documents: coverage rose from 0.21 to 1.00 across the abstract→full-text fix). `UNPARSED` rounds are a real bug — raise `MAX_TOKENS_CRITIC` in `adjudicator.py` or shrink the evidence budget. |
+| **Low coverage** (many `ABSTAINED`, few `GRADED`) | Either genuine abstention on thin evidence, or the critic's JSON got truncated before the closing brace (counted as a parse failure, not abstention) | Check the "coverage by evidence depth" block (full-text vs abstract-only) and the `-v`/`CITEVAL_PROGRESS=1` per-round log for `UNPARSED` lines. Genuine abstention on abstract-only evidence is expected and improves with full-text grounding (this is exactly what `design/STATUS.md` documents: coverage rose from 0.21 abstract-only to ~0.96 with full-text grounding). `UNPARSED` rounds are a real bug — raise `MAX_TOKENS_CRITIC` in `adjudicator.py` or shrink the evidence budget. |
 | **Low exact accuracy, high ±1-adjacent accuracy** | Adjacent ordinal noise — boundary fuzziness between neighboring grades on the 6-level scale (`fully-supported → supported-with-overreach → partially-supported → technically-true-but-misleading → unsupported-for-the-claim → contradicted`) | Expected, not a bug. This is exactly why QWK and ±1-adjacent are reported alongside exact-match. Only escalate if ±1-adjacent *also* drops. |
 | **High ECE** | Overconfidence — the raw `a_exact` confidence overstates empirical accuracy | Refit: re-run §1a's `recalibrate.py` on the fresh predictions, read the **LOO** ECE (not in-sample — in-sample overstates calibration at small N), then opt in live via `--recalibrate` on `scorer`/`slice_runner` (fails closed — declines a missing/degenerate map, e.g. `A <= 0`). |
 | **A confident-wrong case** (high `a_exact` / tier=`high`, but `grade != reference grade`) | A substantive grading error, not a calibration problem | Autopsy, don't re-threshold: re-run that one `case_id` with `-v`/`CITEVAL_PROGRESS=1` and read the raw supporter/refuter/critic transcript (rationale + `output_tokens` are already stored per round) to see what the critic over-weighted. The fix is a prompt/rubric change (RB1/RB2), never a confidence-threshold tweak. |
@@ -256,32 +291,50 @@ runs).
 ### Baseline numbers (reference point)
 
 From the full cal30 run (`corpus/calibration/corpus_cal30.jsonl` × `graded_reference_v2.jsonl`,
-N=27 after excluding 1 infra error [Bs09] + 1 abstention [Ch05] + 1 non-substantiating [Ch15] from
-30 total). Live-reproduced 2026-07-12 via §1a/§1b exactly as documented above:
+N=27 graded of 28 labeled; 1 infra error [Bs09] + 1 abstention [Ch05] excluded from grading, 1
+non-substantiating [Ch15] carved out). The **Current** column is what `make eval` reports today; the
+**Pre-regrade** column is the pre-C4-re-grade snapshot this SOP originally captured (2026-07-12),
+kept so you can see the direction the re-grade moved each metric. **Diff new runs against the
+Current column.**
 
-| Axis | Metric | Value |
-|---|---|---|
-| Objective — retraction | Precision / Recall / Specificity | 1.00 / 1.00 / 1.00 |
-| Objective — scope (live Opus C3, per `design/STATUS.md`) | Recall | 0.91 |
-| Objective — scope (offline lexical stub, §1b's view) | Recall | 0.80 |
-| Objective — control specificity | clean / total | 9 / 9 |
-| Graded — coverage | graded / labeled | 27 / 27 (1.00) |
-| Graded — accuracy | exact | **0.59** (0.593) |
-| Graded — accuracy | ±1-adjacent | **0.85** (0.852) |
-| Graded — QWK | quadratic-weighted kappa | **0.70** (0.695) |
-| Graded — AUROC | conf vs. correctness | **0.68** (0.685; 95% CI 0.50–0.86) |
-| Graded — ECE | raw | 0.34 (0.339) |
-| Graded — ECE | recalibrated, leave-one-out (headline) | **0.16** (0.157) |
-| Graded — Brier | exact / ±1-adjacent | 0.305 / 0.131 |
+| Axis | Metric | Pre-regrade (snapshot) | **Current (`make eval`)** |
+|---|---|---|---|
+| Objective — retraction | Precision / Recall / Specificity | 1.00 / 1.00 / 1.00 | **1.00 / 1.00 / 1.00** |
+| Objective — scope (live Opus C3) | Recall | 0.91 | **0.91** (0.909) |
+| Objective — scope (offline lexical stub, §1b's view) | Recall | 0.80 | 0.80 (unchanged floor) |
+| Objective — control specificity | clean / total | 9 / 9 | **9 / 9** |
+| Graded — coverage | graded / labeled | 27 / 27 (1.00) | **27 / 28 (0.96)** |
+| Graded — accuracy | exact | 0.59 (0.593) | **0.59** (0.593) |
+| Graded — accuracy | ±1-adjacent | 0.85 (0.852) | **1.00** |
+| Graded — QWK | quadratic-weighted kappa | 0.70 (0.695) | **0.90** (0.895) |
+| Graded — AUROC | conf vs. correctness | 0.68 (0.685; CI 0.50–0.86) | **0.64** (0.636; 95% CI 0.45–0.81) |
+| Graded — ECE | raw | 0.34 (0.339) | **0.32** (0.317) |
+| Graded — ECE | recalibrated, leave-one-out (headline) | 0.16 (0.157) | **0.08** (0.0787) |
+| Graded — Brier | exact / ±1-adjacent | 0.305 / 0.131 | **0.325 / 0.034** |
 
-Read this table by diffing your new run's numbers against it, row for row, using the gap table
-above to interpret any material move (roughly: > 0.05 on exact/adjacent/QWK/AUROC, or > 0.05 on
-ECE, is worth investigating rather than shrugging off as noise at N=27).
+The re-grade tightened calibration (raw ECE 0.34→0.32, LOO 0.16→0.08) and sharpened the ordinal
+(QWK 0.70→0.90, ±1-adjacent 0.85→1.00); AUROC fell slightly (0.68→0.64) and exact-match held.
+Read the table by diffing your new run's **Current-column** numbers row for row, using the gap
+table above to interpret any material move (roughly: > 0.05 on exact/adjacent/QWK/AUROC, or > 0.05
+on ECE, is worth investigating rather than shrugging off as noise at N=27). The committed
+`gate_thresholds.json` v4 encodes these as hard floors — `make eval` fails nonzero on a breach.
 
 ### Gate thresholds
 
-No `gate_thresholds.json` exists in the repo as of this writing (checked `corpus/calibration/` and
-repo-wide). Don't invent a pass/fail cutoff that isn't backed by a committed file — that would be
-exactly the kind of unverifiable-axis fabrication CLAUDE.md's invariants forbid for the tool
-itself; hold this SOP to the same standard. Until `--gate` (§1c) lands with its own thresholds
-file, use the baseline table above as the diff-by-eye reference point.
+The committed cutoffs live in **`corpus/calibration/gate_thresholds.json`** (`thresholds_version: 4`,
+`reference_version: graded_reference_v2`) — the file `make eval` / `python -m citeval.eval` enforce.
+It carries two things:
+
+- **`thresholds`** — hard floors/ceilings: retraction P/R ≥ 0.95, scope P ≥ 0.95, scope recall ≥
+  0.90, control specificity ≥ 0.95, graded exact ≥ 0.50, ±1-adjacent ≥ 0.80, QWK ≥ 0.60, recal-LOO
+  ECE ≤ 0.20, coverage ≥ 0.90, plus a confident-wrong guard (`a_exact ≥ 0.85` **and** ordinal
+  distance ≥ 2 ⇒ breach; currently zero such cases).
+- **`baseline`** — the measured reference point for the **zero-objective-regression** guard: any
+  objective axis dropping below its committed baseline is a breach even if it still clears the floor.
+
+The thresholds sit **below** the measured baseline table above, on purpose — margin, so ordinary
+run-to-run noise at N=27 doesn't trip the gate while a real regression still does. After an intended,
+reviewed change, reseed the `baseline` block with fresh numbers via **`make baseline`** (==
+`python -m citeval.eval --print-baseline`) and bump `thresholds_version`. Don't hand-edit a cutoff
+that isn't backed by a measured, committed run — CLAUDE.md's anti-fabrication standard applies to
+this SOP too.
