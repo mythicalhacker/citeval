@@ -2,7 +2,7 @@
 
 ## Current state (final)
 
-All three axes built, verified, and committed on `master`; the full unit suite is **234 tests, all
+All three axes built, verified, and committed on `master`; the full unit suite is **249 tests, all
 green** (`make test`). Reproduce the in-domain numbers offline with **`make eval`** — which
 **re-scores the frozen, committed cal30 predictions** (`results_cal30.jsonl`) against
 `graded_reference_v2` and enforces the versioned gate. It is a deterministic **regression gate over
@@ -68,7 +68,7 @@ flowchart LR
 ```
 
 **Legend.** Green = built, tested, integrated on `master`; **every node above is now green** — the
-full unit suite is green (**234 tests**, `make test`). The amber "built-but-unexercised" and dashed
+full unit suite is green (**249 tests**, `make test`). The amber "built-but-unexercised" and dashed
 "pending" styles are retained only as the historical build-journey key: **C4** was once a mock-first
 scaffold and the live graded axis + calibration once dashed-pending, but **nothing sits in those
 states today** — `WO-C4-integrate` wired RB1/RB2/RB3 into C4 and the graded axis is calibrated and
@@ -87,7 +87,7 @@ fallback. The one genuinely open item is the human spot-check of the reference g
 | C6a | Corpus generator | ✅ delivered (92 cases) | — | retraction-screen B/C sources; B-population shortfall (structural) |
 | C6b | Scorer / harness | ✅ objective axes | 32 | add **calibration metrics** (Brier/AURC/QWK) — part of WO-C4-integrate |
 
-_Test counts are per component's own test file, as of `master`; the **full suite is 234 tests**
+_Test counts are per component's own test file, as of `master`; the **full suite is 249 tests**
 (`make test`), all green. The smaller suite totals quoted in earlier revisions of this doc predate
 the calibration/gate test files (`test_recalibrate` 27, `test_eval_gate` 22, `test_objective_axes`
 16, `test_demo`/`test_showcase` 19) that landed with the graded axis and the offline gate._
@@ -128,7 +128,7 @@ RB1–3 are complete and reconciled into `INTEGRATION_SPEC.md` + `WO-C4-integrat
 ## Pending / needs implementation (in priority order)
 
 1. ✅ **WO-C4-integrate — DONE** (merged 585a965): RB1/RB2/RB3 wired into C4, scorer calibration
-   metrics added, graded axis flag-gated. No regression; the suite has since grown to **234 tests**,
+   metrics added, graded axis flag-gated. No regression; the suite has since grown to **249 tests**,
    all green.
 2. ✅ **Reference grades — DONE**: 30-case `substantive_grade` reference (Claude Science, full-text).
 3. ✅ **First live graded run — DONE** (pre-regrade, abstract-only): the honest *starting* point —
