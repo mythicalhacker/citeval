@@ -1,0 +1,16 @@
+# citeval API server dependencies (W0-CONTRACTS froze contracts.py + pricing.py; later sprint
+# sessions add telemetry/events/runner/batch/app). Install into a venv before running the app:
+#   python -m venv .venv && . .venv/bin/activate && pip install -r server/requirements.txt
+#
+# NOTE: the W0 contract + pricing UNIT TESTS run on the stdlib alone (unittest) with only
+# pydantic present — see server/README.md. The packages below are what the FULL live server
+# (W2-SERVER) needs; pytest is listed for the sessions that prefer it.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sse-starlette>=2.1
+pydantic>=2.6
+httpx>=0.27
+pytest>=8.0
+
+# The live pipeline itself (imported read-only by the runner) additionally needs `anthropic`
+# and a network/key — that dependency lives with `src/citeval`, not here.
