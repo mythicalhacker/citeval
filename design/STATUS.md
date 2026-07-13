@@ -1,7 +1,30 @@
 # citeval — system design & build status
 
-Where the system is as of the 92-case scored run. Green = built & verified; amber = built but not
-yet integrated/exercised; dashed = pending.
+## Current state (final)
+
+All three axes built, verified, and committed on `master`. Reproduce the in-domain numbers offline
+with `make eval`:
+
+- **Retraction:** precision/recall 1.00 in-domain **and** on the 45-case held-out set (externally
+  grounded, Retraction Watch × NCBI).
+- **Scope:** in-domain precision 1.00 / recall **0.909** — honest, with `_LIVE_SCOPE_OVERRIDES`
+  removed; held-out precision 0.92 / recall **0.71** (species 0.83, population 0.40 — the documented
+  weak point, WO-C3 partially landed).
+- **Graded substantive (N=27 vs. the blind-decider reference):** QWK **0.90**, within-one-level
+  **1.00**, exact 0.59, recalibrated LOO-ECE **0.08**, **zero** confident-but-wrong. Fast offline gate
+  `make eval` PASSes at thresholds v4.
+- **Held-out (ext-45, never tuned on):** the direction-reversal fix generalizes; a blind tiebreak on
+  the 6 graded disagreements sided with the system **4/6** (the single-pass ext reference is often the
+  harsher side).
+
+Judge-facing writeup: `docs/SUBMISSION.md` · eval runbook: `docs/EVAL_SOP.md` · landscape:
+`docs/LANDSCAPE.md`.
+
+---
+
+*The sections below are the historical build journey, kept as a record — the numbers above supersede
+any earlier figures in them.* Green = built & verified; amber = built but not yet
+integrated/exercised; dashed = pending.
 
 ```mermaid
 flowchart LR
