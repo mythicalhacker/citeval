@@ -1,0 +1,47 @@
+name: CI
+
+# The whole gate is stdlib-only and fully offline: the unit suite (`make test`) and the eval
+# gate (`make eval`) need no third-party package (no anthropic / pandas / pyarrow), no NCBI, and
+# no ANTHROPIC_API_KEY. So there is deliberately NO `pip install` step — a dependency-free CI is
+# what makes this a trustworthy hermeticity check. See test_eval_gate's no-network guard and the
+# committed NCBI cache fixtures under tests/fixtures/ that keep the offline demo/showcase tests
+# green on a fresh checkout.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# One in-flight run per ref; newer pushes cancel older ones.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test + eval (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Show interpreter
+        run: python3 --version
+
+      - name: Unit tests (stdlib unittest)
+        run: make test
+
+      - name: Offline eval gate
+        run: make eval

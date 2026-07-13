@@ -13,12 +13,19 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ — for the cache-seed helper
 
 from citeval.contracts import (  # noqa: E402
     AxisFinding, CitedIdentifier, ClaimUnit, GroundedRecord, MeshTag, RetractionInfo,
     RetractionWatchHit, ScopeFrame, Verdict,
 )
 from citeval import demo  # noqa: E402
+from _ncbi_cache_fixture import seed_ncbi_cache  # noqa: E402
+
+# The offline end-to-end tests below drive the real grounding path (PMID 28882997). Warm its
+# cache from committed fixtures so they run hermetically with no network and no warm dev cache
+# (e.g. a fresh CI checkout, where src/citeval/.cache/ is gitignored and absent).
+seed_ncbi_cache()
 
 # --------------------------------------------------------------------------- fixtures
 CLAIM = ("Resveratrol has shown promising clinical benefits as an anti-aging and "
@@ -242,6 +249,19 @@ def test_main_html_write_failure_returns_1():
             assert rc == 1 and "could not write HTML" in err.getvalue()
     finally:
         grounding._get = orig
+
+
+# --------------------------------------------------------------------------- unittest discovery
+def load_tests(loader, standard_tests, pattern):
+    """`unittest discover` hook. This module is pytest-style (plain ``test_*`` functions, no
+    ``unittest.TestCase``), so ``discover`` would otherwise collect **0** here even though every
+    test passes. Wrap each module-level ``test_*`` callable in a ``FunctionTestCase`` so it runs
+    under ``make test``. The standalone ``_run_all`` runner and pytest collection are unaffected."""
+    import unittest
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            standard_tests.addTest(unittest.FunctionTestCase(fn))
+    return standard_tests
 
 
 # --------------------------------------------------------------------------- standalone runner

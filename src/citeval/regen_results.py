@@ -40,16 +40,15 @@ def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-# WO-C3 (2026-07-13): the scope overrides are REMOVED — cal30 scope now stands on the REAL deterministic
-# Opus-C3 result. The improved C3 (over-generalization stances + pregnancy detection) catches Bs22
-# natively on the species axis (a "Humans"-scoped claim citing an animal-only source). Bp01 (a bare
-# general human claim citing an INFANT-only source) is left as a genuine FN: the identical
+# WO-C3 (2026-07-13): cal30 scope stands on the REAL deterministic Opus-C3 result — there are no
+# hand-applied scope overrides. The improved C3 (over-generalization stances + pregnancy detection)
+# catches Bs22 natively on the species axis (a "Humans"-scoped claim citing an animal-only source).
+# Bp01 (a bare general human claim citing an INFANT-only source) is left as a genuine FN: the identical
 # general-claim-vs-pediatric-source pattern is labelled SUPPORTED for the Ce03/Ce11 controls in the same
 # v2 reference, so flagging Bp01 would false-positive genuine controls below the specificity floor
 # (a claim-context distinction invisible to a claim-only scope parse). Precision-first: not flagged.
-# The offline gate's cal30 scope recall therefore drops from a propped 1.0 to the honest 0.909 (Bp01 the
-# sole miss), reseeded into gate_thresholds.json. Kept as an (empty) hook for any future reconciliation.
-_LIVE_SCOPE_OVERRIDES: dict = {}
+# The offline gate's cal30 scope recall is therefore the honest 0.909 (Bp01 the sole miss), not a
+# propped 1.0, reseeded into gate_thresholds.json.
 
 
 def _retraction_verdict(row: dict) -> str | None:
@@ -110,16 +109,7 @@ def regenerate(predictions_path: Path, scorecard_path: Path, corpus_path: Path,
     # the recorded `overall`); species_verdict is already recorded. population_verdict is left null —
     # it needs MeSH population tags the pre-enrichment scorecard did not persist, so per invariant #3
     # it is FLAGGED (null), never fabricated. Live runs going forward record all three directly.
-    # Then apply the one-time live-scope reconciliation (Bs22 species / Bp01 population SCOPE_MISMATCH).
-    obj_rows = []
-    for row in sc.get("rows", []):
-        row = dict(row, retraction_verdict=_retraction_verdict(row))
-        ov = _LIVE_SCOPE_OVERRIDES.get(row.get("case_id"))
-        if ov:
-            row[ov["axis"]] = ov["verdict"]
-            row["pred_scope"] = True
-            row["overall"] = ov["overall"]
-        obj_rows.append(row)
+    obj_rows = [dict(row, retraction_verdict=_retraction_verdict(row)) for row in sc.get("rows", [])]
 
     # code_version stamp: the durable file is a TWO-provenance join — the graded side from the frozen
     # predictions, the objective/scope side from the (separately-versioned) scorecard. Record BOTH so the

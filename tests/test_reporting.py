@@ -298,6 +298,19 @@ def test_render_json_unchanged_and_carries_graded_evidence():
     assert sub["evidence"]["supporter"]["span"] == _SUPPORTER_SPAN
 
 
+# --------------------------------------------------------------------------- unittest discovery
+def load_tests(loader, standard_tests, pattern):
+    """`unittest discover` hook. This module is pytest-style (plain ``test_*`` functions, no
+    ``unittest.TestCase``), so ``discover`` would otherwise collect **0** here even though every
+    test passes. Wrap each module-level ``test_*`` callable in a ``FunctionTestCase`` so it runs
+    under ``make test``. The standalone ``_run_all`` runner and pytest collection are unaffected."""
+    import unittest
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            standard_tests.addTest(unittest.FunctionTestCase(fn))
+    return standard_tests
+
+
 # --------------------------------------------------------------------------- standalone runner
 def _run_all() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
