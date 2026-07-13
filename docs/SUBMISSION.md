@@ -4,14 +4,22 @@
 grounded in external records, adversarially adjudicated on Claude Opus 4.8, proven with a scored eval
 corpus, and stress-tested on a held-out set it was never tuned on.*
 
+> **TL;DR** — Three axes (retraction · species/population scope · a six-level *substantive-support*
+> grade), every verdict carrying a confidence **tier** and a **provenance** label (metadata-grounded vs.
+> model-inferred). Retraction detection is perfect in-domain **and** on a held-out set (P/R **1.00**); the
+> graded axis reaches **0.90** quadratic-weighted kappa, is **within one level on every case**, carries
+> **zero** confident-but-wrong grades, and recalibrates to an honest **0.08** ECE. Where it's weak
+> (population scope — recall **0.71** held-out) we measure it and say so. Reproduce the in-domain
+> headlines offline in seconds: `make eval`.
+
 ---
 
 ## Hook
 
 We built a referee for scientific citations: one claim, one cited paper, one question — does the
 paper actually support the claim? Partway through, the tool overruled its own answer key: three
-papers our corpus had marked clean were genuinely retracted, and citeval's external grounding was
-right where our label was wrong. That is the whole thesis in one moment — ground every objective
+citations our corpus had marked clean pointed to genuinely retracted papers — two distinct papers, one
+cited twice — and citeval's external grounding was right where our label was wrong. That is the whole thesis in one moment — ground every objective
 verdict in external structured truth, and let the metadata overrule the model, even when the model
 is us.
 
@@ -88,7 +96,7 @@ must be grounded, not rhetorical.
 
 **Calibrated confidence.** Confidence is the triad's self-consistency agreement across resampled
 rounds, then Platt-recalibrated against the reference. Because the map is monotone, recalibration cut
-expected calibration error (raw ECE **0.34** → leave-one-out ECE **0.08**) *without touching
+expected calibration error (raw ECE **0.32** → leave-one-out ECE **0.08**) *without touching
 discrimination* — AUROC is identical before and after (**0.64**).
 
 **Provenance and tier on every finding.** Each axis verdict is stamped `metadata-grounded |
@@ -99,7 +107,7 @@ lives on its own axes; the `overall` rollup is swappable.
 ## What it caught
 
 **It overruled its own answer key.** Building the objective corpus, the dual-source retraction check
-flagged three papers as retracted that the corpus's own labels had marked clean. Retraction Watch and
+flagged three citations — two distinct papers, one cited twice — as retracted that the corpus's own labels had marked clean. Retraction Watch and
 NCBI agreed; the labels were wrong. This is invariant #1 — metadata overrides model — firing against
 its own makers.
 
@@ -145,7 +153,7 @@ the harsher, wrong side. The two it lost are reported honestly below.
 | Quadratic-weighted kappa | **0.90** |
 | Within-one-level agreement | **1.00** |
 | Exact agreement (grade == reference) | 0.59 (16/27) |
-| Recalibrated calibration error (raw → leave-one-out ECE) | 0.34 → **0.08** |
+| Recalibrated calibration error (raw → leave-one-out ECE) | 0.32 → **0.08** |
 | AUROC (confidence vs. correctness) | 0.64 |
 | Coverage (gradable cases graded) | 0.96 (one honest abstention) |
 | Confident-but-wrong (high confidence, off by ≥2 levels) | **0** |
