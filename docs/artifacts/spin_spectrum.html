@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The six-level spin spectrum · citeval</title>
+<style>
+:root{
+  --plane:#f4f4f1; --surface:#fcfcfb; --surface-2:#f6f6f2;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,.10);
+  --accent:#2a78d6; --accent-soft:#e7f0fc;
+  --good:#0ca30c; --good-ink:#006300; --warn:#e08e00; --serious:#d5622e; --critical:#c0392b;
+  --pos:#1baf7a; --neg:#e34948;
+  /* 6-level severity ramp: best -> worst */
+  --sev0:#0ca30c; --sev1:#7fae10; --sev2:#e0a500; --sev3:#e07b1f; --sev4:#d4562a; --sev5:#c0392b;
+  --code-bg:#f2f1ec;
+}
+:root[data-theme="dark"]{
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+  --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+  --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+  --accent:#3987e5; --accent-soft:#16233a;
+  --good:#0ca30c; --good-ink:#22c55e; --warn:#fab219; --serious:#ec835a; --critical:#e05656;
+  --pos:#199e70; --neg:#e66767;
+  --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+  --code-bg:#232220;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+    --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+    --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+    --accent:#3987e5; --accent-soft:#16233a;
+    --good-ink:#22c55e; --critical:#e05656;
+    --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+    --code-bg:#232220;
+  }
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.55;letter-spacing:.005em}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:.08em .38em;border-radius:5px;font-size:.86em}
+h1,h2,h3{line-height:1.2;letter-spacing:-.01em;margin:0}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px 96px}
+.tnums{font-variant-numeric:tabular-nums}
+
+/* --- top bar / nav --- */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--plane) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--hair)}
+.topbar-in{max-width:1060px;margin:0 auto;padding:9px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-weight:750;letter-spacing:-.02em;font-size:15px;white-space:nowrap}
+.brand .dot{color:var(--accent)}
+.nav{display:flex;gap:3px;flex-wrap:wrap;flex:1}
+.nav a{font-size:12.5px;font-weight:560;color:var(--ink-2);padding:5px 9px;border-radius:7px;white-space:nowrap}
+.nav a:hover{background:var(--surface-2);text-decoration:none}
+.nav a.on{background:var(--accent-soft);color:var(--accent)}
+.themetog{border:1px solid var(--hair);background:var(--surface);color:var(--ink-2);
+  border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600}
+.themetog:hover{background:var(--surface-2)}
+
+/* --- hero --- */
+.hero{padding:44px 0 10px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:clamp(27px,4.4vw,42px);font-weight:800;margin:12px 0 0}
+.lede{font-size:clamp(16px,1.9vw,19px);color:var(--ink-2);margin:16px 0 0;max-width:70ch}
+.kicker{margin-top:16px;font-size:13.5px;color:var(--muted)}
+.kicker b{color:var(--ink-2);font-weight:650}
+
+/* --- cards & sections --- */
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;
+  padding:22px 24px;margin:20px 0;box-shadow:0 1px 0 var(--hair)}
+.card h2{font-size:20px;font-weight:750;margin-bottom:4px}
+.card h3{font-size:15px;font-weight:700;margin:18px 0 6px}
+.sec-note{color:var(--ink-2);font-size:14.5px;margin:6px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* --- stat tiles --- */
+.tile{background:var(--surface-2);border:1px solid var(--hair);border-radius:12px;padding:15px 17px}
+.tile .lab{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:5px;line-height:1}
+.tile .sub{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+
+/* --- badges --- */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:2.5px 9px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;vertical-align:middle}
+.b-good{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good-ink)}
+.b-warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--serious)}
+.b-crit{background:color-mix(in srgb,var(--critical) 16%,transparent);color:var(--critical)}
+.b-neu{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--hair)}
+.b-accent{background:var(--accent-soft);color:var(--accent)}
+
+/* --- bars --- */
+.bar-track{position:relative;height:20px;background:var(--surface-2);border:1px solid var(--hair);
+  border-radius:6px;overflow:hidden}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 4px 4px 5px}
+.bar-row{display:grid;grid-template-columns:150px 1fr 74px;gap:12px;align-items:center;margin:9px 0}
+.bar-row .rl{font-size:13px;color:var(--ink-2);font-weight:600}
+.bar-row .rv{font-size:13.5px;font-weight:750;text-align:right}
+@media (max-width:560px){.bar-row{grid-template-columns:110px 1fr 56px}}
+
+/* --- tables --- */
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+table.dt th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--axis)}
+table.dt td{padding:9px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+table.dt tr:last-child td{border-bottom:none}
+
+/* --- quotes / spans --- */
+.span{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;
+  background:var(--code-bg);border-left:3px solid var(--accent);border-radius:0 7px 7px 0;
+  padding:9px 13px;color:var(--ink-2);margin:8px 0}
+.callout{border:1px solid var(--hair);border-left:4px solid var(--accent);background:var(--surface-2);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:16px 0}
+.callout.warn{border-left-color:var(--warn)}
+.callout.crit{border-left-color:var(--critical)}
+.small{font-size:12.5px;color:var(--muted)}
+.prov{font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace}
+hr.rule{border:none;border-top:1px solid var(--hair);margin:26px 0}
+
+/* --- footer --- */
+.foot{border-top:1px solid var(--hair);margin-top:40px;padding-top:20px;color:var(--muted);font-size:12.5px}
+.foot a{color:var(--ink-2)}
+.foot .xlinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.foot .xlinks a{border:1px solid var(--hair);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600}
+.foot .xlinks a:hover{background:var(--surface-2);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="topbar-in"><span class="brand">cite<span class="dot">·</span>val</span><nav class="nav"><a class="navlink" href="index.html">Overview</a><a class="navlink" href="climbdown.html">1 · Climb-down</a><a class="navlink on" href="spin_spectrum.html">2 · Spin spectrum</a><a class="navlink" href="tiebreak_console.html">3 · Blind tiebreak</a><a class="navlink" href="debate_replay.html">4 · Debate replay</a></nav><button class="themetog" onclick="__toggleTheme()" aria-label="Toggle colour theme">◐ theme</button></div></div>
+<main class="wrap">
+<section class="hero"><div class="eyebrow">Innovation · the most original artifact</div><h1>The spin spectrum: <span style="color:var(--accent)">six ordered ways</span> a real paper can fail a citation</h1><p class="lede">SciFact, FEVER and MultiVerS grade citations three flat ways (supports / refutes / not enough info). GRADE grades how good the <i>evidence</i> is, not whether the citation is honest. citeval grades <b>citation fidelity</b> on a six-level ordinal — and holds scope constant so “wrong species” never contaminates “wrong substance.”</p><div class="kicker">Definitions parsed from <b>decider_packet.md</b>; every anchor case and count read from <b>graded_reference_v2</b> + <b>graded_reference_ext</b> at build time.</div></section><div class="callout"><b>The rule that makes the axis clean.</b> Grade <b>substance only</b>. A mouse-only or retracted paper can still be <i>fully-supported</i> on substance if its finding backs the claim — species, population, dose and retraction are scored on <a href="climbdown.html">separate axes</a>. That structural separation is why a “spin” grade means one thing and one thing only.</div><div class="card"><h2>Where the cases land — 67 of 75 on the ladder</h2><p class="sec-note">The 30-case calibration set and the 45-case held-out set carry 75 graded cases; 67 land on the ordinal ladder and 8 are off-scale (NOT_ENOUGH_INFO or non-substantiating). The shape is the discipline: the mass sits near “supported,” the harshest grades are rare, and one rung is empty on purpose.</p><div class="bar-row"><div class="rl mono" style="font-size:12px">0 · fully-supported</div><div class="bar-track"><div class="bar-fill" style="width:100.0%;background:var(--sev0)"></div></div><div class="rv tnums">30</div></div><div class="bar-row"><div class="rl mono" style="font-size:12px">1 · supported-with-overreach</div><div class="bar-track"><div class="bar-fill" style="width:30.0%;background:var(--sev1)"></div></div><div class="rv tnums">9</div></div><div class="bar-row"><div class="rl mono" style="font-size:12px">2 · partially-supported</div><div class="bar-track"><div class="bar-fill" style="width:43.3%;background:var(--sev2)"></div></div><div class="rv tnums">13</div></div><div class="bar-row" style="opacity:.55"><div class="rl mono" style="font-size:12px">3 · technically-true-but-misleading</div><div class="bar-track"><div class="bar-fill" style="width:1.5%;background:var(--sev3)"></div></div><div class="rv tnums">0 &larr; defined, never assigned</div></div><div class="bar-row"><div class="rl mono" style="font-size:12px">4 · unsupported-for-the-claim</div><div class="bar-track"><div class="bar-fill" style="width:43.3%;background:var(--sev4)"></div></div><div class="rv tnums">13</div></div><div class="bar-row"><div class="rl mono" style="font-size:12px">5 · contradicted</div><div class="bar-track"><div class="bar-fill" style="width:6.7%;background:var(--sev5)"></div></div><div class="rv tnums">2</div></div></div><div class="card"><h2>The ladder, best → worst</h2><p class="sec-note">First boundary test that fires wins. Each rung shows the rubric definition and a real anchor case you can verify against the cited paper.</p></div><div class="card" style="border-left:5px solid var(--sev0)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev0);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">0</span><h2 style="font-size:19px;margin:0">fully-supported</h2><span class="badge b-neu">30 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> the paper shows exactly what the claim asserts; claim preserves the paper&#x27;s certainty/hedges. (A claim that correctly states a NARROW scope is fully-supported — never penalize correct narrowness.)</p><table class="dt" style="margin-top:6px"><tbody><tr><th style="width:118px">Anchor</th><td><code>Bs12</code> <span class="badge b-neu">grader confidence: high</span></td></tr><tr><th>The claim</th><td style="color:var(--ink-2)">“F nucleatum was promotes resistance of CRC cells to chemotherapy.28 Patients with post-chemotherapy recurrence had a higher abundance of F nucleatum in tumor tissues.28, 193 Bioinformatic and functional studies indicated that F nucleatum activates innate immune responses, via TLR4 and MYD88, resulting in loss of specific microRNAs.”</td></tr><tr><th>Why this rung</th><td>The paper directly demonstrates that F. nucleatum promotes CRC chemoresistance, that recurrent post-chemotherapy patients had higher F. nucleatum tumor abundance, and that F. nucleatum acts via TLR4/MYD88 innate immune signaling causing loss of specific miRNAs (miR-18a* and miR-4802).</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">Knockdown of TLR4 or MYD88 expression blocked-induced ULK1 and ATG7 upregulation,-induced miRNA-18a* and miRNA-4802 loss, and-induced chemoresistance</div></td></tr><tr><th>Provenance</th><td class="prov">llm-fulltext-claude-science &middot; graded_reference_v2.jsonl</td></tr></tbody></table></div><div class="card" style="border-left:5px solid var(--sev1)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev1);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">1</span><h2 style="font-size:19px;margin:0">supported-with-overreach</h2><span class="badge b-neu">9 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> the finding is there but the claim over-asserts it: bigger effect, hardened certainty (drops a hedge), or a generalized mechanism.</p><table class="dt" style="margin-top:6px"><tbody><tr><th style="width:118px">Anchor</th><td><code>A27</code> <span class="badge b-neu">grader confidence: low</span> &middot; <a href="debate_replay.html">replay this debate &rarr;</a></td></tr><tr><th>The claim</th><td style="color:var(--ink-2)">“Similarly, a previous study provided strong evidence that miR-214 could promote fibroblast differentiation of adipose-derived MSCs by restoring elastin expression to improve PFD in rats with birth trauma [31].”</td></tr><tr><th>Why this rung</th><td>The abstract confirms miR-214 promotes fibroblast differentiation of ADMSCs and improves PFD in birth-trauma rats, but the mechanism is stated as down-regulating Mfn2 (its target gene), not &quot;restoring elastin expression&quot;; elastin was one of several upregulated markers, so the claim mischaracterizes the mechanism.</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.</div></td></tr><tr><th>Provenance</th><td class="prov">llm-fulltext-claude-science &middot; graded_reference_v2.jsonl</td></tr></tbody></table></div><div class="card" style="border-left:5px solid var(--sev2)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev2);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">2</span><h2 style="font-size:19px;margin:0">partially-supported</h2><span class="badge b-neu">13 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> the claim is multi-part and some conjuncts are supported, others not.</p><table class="dt" style="margin-top:6px"><tbody><tr><th style="width:118px">Anchor</th><td><code>Ch03</code> <span class="badge b-neu">grader confidence: high</span></td></tr><tr><th>The claim</th><td style="color:var(--ink-2)">“Studies in children showed high rate of viral/viral co-infections (18−34%) [7,8,9,19], although it should be taken into account that children included in these studies were hospitalized for respiratory infections, which could explain the high percentage of co-infections.”</td></tr><tr><th>Why this rung</th><td>The claim cites this paper for a viral/viral co-infection rate of 18−34%, but the paper reports a co-detection rate of 55% in its own cohort (citing 34% and 61% from other studies as comparison range). The paper does confirm the &quot;hospitalized for respiratory infections&quot; caveat, but its headline co-detection figure (55%) exceeds the 18−34% range attributed to it.</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">Co-detections (2 or more viruses) were found in 55% (= 396) of samples.</div></td></tr><tr><th>Provenance</th><td class="prov">decider-adjudicated (blind Claude-Science full-text re-read) &middot; graded_reference_v2.jsonl</td></tr></tbody></table></div><div class="card" style="border-left:5px solid var(--sev3)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev3);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">3</span><h2 style="font-size:19px;margin:0">technically-true-but-misleading</h2><span class="badge b-neu">0 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> every atomic statement is literally defensible, but the framing / selection / causal language misleads.</p><div class="callout warn" style="margin-bottom:0"><b>Deliberately empty.</b> Zero of 30 calibration cases, zero of 45 held-out cases, and zero of the C4 model’s own predictions land here. Pure “literally-true-but-misleading” framing is the hardest call to make blind, and the independent grader never escalates a case this far. citeval reports the empty rung rather than inventing one.<br><br><b>The closest any real case comes — <code>A17</code>:</b> The claim attributes an 87.5% return-to-sport rate to Iwamoto et al with nonoperative treatment, but this abstract is a review reporting conservative-treatment return rates ranging 80.0%–89.3%; the specific 87.5% figure does not appear, and the paper is a meta-review rather than a single case series with that value. That has the flavour of this level — a claim that sounds precise and defensible — but the decider placed it one rung up at <span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span>, not the harshest literally-true-but-misleading reading.</div></div><div class="card" style="border-left:5px solid var(--sev4)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev4);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">4</span><h2 style="font-size:19px;margin:0">unsupported-for-the-claim</h2><span class="badge b-neu">13 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> the paper contains no finding bearing on this claim&#x27;s intervention and outcome (scope held constant).</p><table class="dt" style="margin-top:6px"><tbody><tr><th style="width:118px">Anchor</th><td><code>A25</code> <span class="badge b-neu">grader confidence: low</span> &middot; <a href="climbdown.html">the fabricated-attribution receipt &rarr;</a></td></tr><tr><th>The claim</th><td style="color:var(--ink-2)">“Chen Guanghui found that Mfn2 can significantly inhibit VSMC proliferation in vitro and in vivo, and this action has nothing to do with mitochondrial fusion; Furthermore rats and humans have 95.2% Mfn2 homology 35.”</td></tr><tr><th>Why this rung</th><td>The abstract concerns miR-214 targeting Mfn2 in fibroblast differentiation of ADMSCs during pelvic floor dysfunction; it says nothing about Mfn2 inhibiting VSMC proliferation, its independence from mitochondrial fusion, or rat/human Mfn2 homology (95.2%). Abstract only, so confidence is low.</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.</div></td></tr><tr><th>Provenance</th><td class="prov">llm-fulltext-claude-science &middot; graded_reference_v2.jsonl</td></tr></tbody></table></div><div class="card" style="border-left:5px solid var(--sev5)"><div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span class="badge" style="background:var(--sev5);color:#fff;font-size:15px;padding:5px 12px;font-weight:800">5</span><h2 style="font-size:19px;margin:0">contradicted</h2><span class="badge b-neu">2 cases in corpus</span></div><p class="sec-note" style="margin-top:10px"><b>Rubric:</b> the paper&#x27;s finding is OPPOSITE in direction to the claim.</p><table class="dt" style="margin-top:6px"><tbody><tr><th style="width:118px">Anchor</th><td><code>Bs07</code> <span class="badge b-neu">grader confidence: high</span> &middot; <a href="tiebreak_console.html">an honest loss in the tiebreak &rarr;</a></td></tr><tr><th>The claim</th><td style="color:var(--ink-2)">“decreased levels of circulating triglycerides and LDL and increased levels of HDL [35].”</td></tr><tr><th>Why this rung</th><td>The claim asserts decreased triglycerides and LDL together with increased HDL. The cited paper does show decreased triglyceride and LDL-C in the LAB-treated group, consistent with the claim, but it explicitly reports that HDL-C was also decreased (not increased) in that group. This is a direct contradiction of a specific, material component of the claim.</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">Compared with the HFD group, the HFD-LAB group had slightly decreased TC, HDL-C, LDL-C, triglyceride, glucose, leptin, AST, ALT, and lipase levels.</div></td></tr><tr><th>Provenance</th><td class="prov">llm-fulltext-claude-science &middot; graded_reference_ext.jsonl</td></tr></tbody></table></div><div class="card"><h2>Two off-scale outcomes (never on the ladder)</h2><div class="grid2"><div class="tile"><div class="lab">N/A — non-substantiating</div><div class="sub" style="margin-top:8px">The citation is a method, dataset, tool, or background pointer — not evidence for a knowledge claim. It is <b>not</b> a bad grade; it is “this isn’t the kind of citation we grade.” Two independent verdicts in the <a href="tiebreak_console.html">held-out tiebreak</a> are exactly this.</div></div><div class="tile"><div class="lab">NOT_ENOUGH_INFO</div><div class="sub" style="margin-top:8px">The available text is genuinely insufficient to place a grade — an honest abstention, distinct from any grade. It weights confidence, it doesn’t fake one.</div></div></div></div><hr class="rule"><p class="small">Six ordered rungs plus two honest off-ramps, holding scope constant — a resolution the field’s flat 3-way benchmarks can’t express, and the reason citeval can tell <i>overreach</i> from <i>contradiction</i> instead of lumping both under “refutes.”</p>
+<footer class="foot"><div>Built offline from committed data — no model calls, no API key. Regenerate with <code>python docs/build_artifacts/build_all.py</code>. Figures trace to the committed calibration corpus, the frozen grade vocabulary, and the git history each page cites.</div><div class="xlinks"><a href="index.html"><b>Overview</b> — The discipline, made visible</a><a href="climbdown.html"><b>1 · Climb-down</b> — It caught its own propped metric on held-out data</a><a href="tiebreak_console.html"><b>3 · Blind tiebreak</b> — 6 disagreements, an independent third read, 4/6 — losses shown</a><a href="debate_replay.html"><b>4 · Debate replay</b> — The adversarial triad, replayed from the frozen transcript</a></div></footer>
+</main>
+
+<script>
+(function(){try{var t=localStorage.getItem('citeval-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+function __toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('data-theme');
+ var next = cur==='dark' ? 'light' : (cur==='light' ? 'dark' : (matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'));
+ r.setAttribute('data-theme',next);try{localStorage.setItem('citeval-theme',next);}catch(e){}}
+</script>
+
+</body>
+</html>
