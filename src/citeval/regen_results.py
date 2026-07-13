@@ -27,7 +27,10 @@ from .scorer import DURABLE_FIELDS, build_durable_rows, load_reference_grades
 WORKSPACE = Path(__file__).resolve().parents[2]
 CAL = WORKSPACE / "corpus" / "calibration"
 DEFAULT_PREDICTIONS = CAL / "graded_predictions_cal30.jsonl"
-DEFAULT_SCORECARD = WORKSPACE / "outputs" / "scorecard_cal30_check" / "scorecard.json"
+# COMMITTED objective scorecard (WO-C3 live Opus-C3 objective run) so `make regen-results` with defaults
+# reproduces the committed results_cal30.jsonl (scope recall 0.909) from tracked inputs — the earlier
+# default pointed at a gitignored, stale pre-enrichment scorecard and could not be reproduced.
+DEFAULT_SCORECARD = CAL / "scorecard_cal30_objective.json"
 DEFAULT_CORPUS = CAL / "corpus_cal30.jsonl"
 DEFAULT_REFERENCE = CAL / "graded_reference_v2.jsonl"
 DEFAULT_OUT = CAL / "results_cal30.jsonl"
@@ -37,19 +40,16 @@ def _jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-# ONE-TIME scope reconciliation. results_cal30.jsonl was regenerated from PRE-PERSIST predictions
-# that carried only the LEXICAL C3-lite scope verdict (CLAIM_SCOPE_UNSTATED → pred_scope=False), which
-# MISSED Bs22 and Bp01. The DEPLOYED live Opus-C3 run flagged BOTH as SCOPE_MISMATCH (real scope recall
-# 1.0 — see the live scorecard's per-case table): Bs22 on the species axis, Bp01 on the population
-# axis. Back those live verdicts into the backfill so the offline gate reflects the DEPLOYED system.
-# Going forward, live graded runs persist the live scope verdict natively (score() writes each axis
-# verdict into `rows`), so this override applies ONLY to the historical cal30 backfill.
-_LIVE_SCOPE_OVERRIDES = {
-    "Bs22": {"axis": "species_verdict", "verdict": "SCOPE_MISMATCH",
-             "overall": "CLAIM NOT SUPPORTED (species scope mismatch)"},
-    "Bp01": {"axis": "population_verdict", "verdict": "SCOPE_MISMATCH",
-             "overall": "CLAIM NOT SUPPORTED (population scope mismatch)"},
-}
+# WO-C3 (2026-07-13): the scope overrides are REMOVED — cal30 scope now stands on the REAL deterministic
+# Opus-C3 result. The improved C3 (over-generalization stances + pregnancy detection) catches Bs22
+# natively on the species axis (a "Humans"-scoped claim citing an animal-only source). Bp01 (a bare
+# general human claim citing an INFANT-only source) is left as a genuine FN: the identical
+# general-claim-vs-pediatric-source pattern is labelled SUPPORTED for the Ce03/Ce11 controls in the same
+# v2 reference, so flagging Bp01 would false-positive genuine controls below the specificity floor
+# (a claim-context distinction invisible to a claim-only scope parse). Precision-first: not flagged.
+# The offline gate's cal30 scope recall therefore drops from a propped 1.0 to the honest 0.909 (Bp01 the
+# sole miss), reseeded into gate_thresholds.json. Kept as an (empty) hook for any future reconciliation.
+_LIVE_SCOPE_OVERRIDES: dict = {}
 
 
 def _retraction_verdict(row: dict) -> str | None:
@@ -79,12 +79,21 @@ def regenerate(predictions_path: Path, scorecard_path: Path, corpus_path: Path,
                   for c in _jsonl(corpus_path)}
     ref = load_reference_grades(reference_path) if reference_path else {}
 
-    # Prefer the graded fields as recorded in the COMMITTED predictions file (the literal source of
-    # record for req #5); fall back to the scorecard's graded_records for any case only present there.
+    # The COMMITTED predictions file is the literal source of record for the graded side (req #5), so
+    # drive the graded case-list from IT (union with the scorecard's graded_records for any case only
+    # present there). This lets the objective side be refreshed from a fresh OBJECTIVE-ONLY scorecard
+    # (which carries no graded_records) without dropping the frozen graded predictions — the WO-C3 path,
+    # where the objective axes are re-run live but the C4 grades stay sealed.
+    sc_graded = {r["case_id"]: r for r in sc.get("graded_records", [])}
+    # Exclude any case the objective run recorded as an infra ERROR: build_durable_rows already emits it
+    # from sc["errors"], so admitting it here (it may still be GRADED in a prior preds file) would
+    # DOUBLE-COUNT it — once as a GRADED row and once as an ERROR row.
+    error_ids = {e.get("case_id") for e in sc.get("errors", [])}
+    case_ids = [c for c in (list(preds.keys()) or list(sc_graded.keys())) if c not in error_ids]
     graded_records = []
-    for r in sc.get("graded_records", []):
-        cid = r["case_id"]
+    for cid in case_ids:
         p = preds.get(cid, {})
+        r = sc_graded.get(cid, {})
         graded_records.append({
             "case_id": cid,
             "status": p.get("status", r.get("status")),
@@ -112,11 +121,16 @@ def regenerate(predictions_path: Path, scorecard_path: Path, corpus_path: Path,
             row["overall"] = ov["overall"]
         obj_rows.append(row)
 
-    # One code_version stamp for the whole file: the dominant one across the committed prediction rows
-    # (the code that produced this run), falling back to the scorecard's stamp.
+    # code_version stamp: the durable file is a TWO-provenance join — the graded side from the frozen
+    # predictions, the objective/scope side from the (separately-versioned) scorecard. Record BOTH so the
+    # scope verdicts are not misattributed to the graded code (review #7). Collapse to a single string
+    # when they agree.
     versions = Counter(p.get("code_version") for p in preds.values() if p.get("code_version"))
-    version = (versions.most_common(1)[0][0] if versions
-               else (sc.get("errors") or [{}])[0].get("code_version", "cal30-regen"))
+    graded_ver = (versions.most_common(1)[0][0] if versions
+                  else (sc.get("errors") or [{}])[0].get("code_version", "cal30-regen"))
+    obj_ver = sc.get("code_version") or ""
+    version = (f"{graded_ver} (graded) + {obj_ver} (objective/scope)"
+               if obj_ver and obj_ver != graded_ver else graded_ver)
 
     durable = build_durable_rows(obj_rows, graded_records, sc.get("errors", []),
                                  corpus=corpus_label, version=version, gt_by_case=gt_by_case)

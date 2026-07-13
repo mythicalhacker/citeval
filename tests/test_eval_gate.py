@@ -43,9 +43,10 @@ THRESHOLDS = CAL / "gate_thresholds.json"
 # grounding error) now grades, so n_errors 1 -> 0 and n 29 -> 30.
 EXPECT = {
     "retraction_prf": (1.0, 1.0, 1.0),
-    "scope_prf": (1.0, 1.0, 1.0),          # Bs22/Bp01 reconciled to the deployed live Opus-C3 verdicts
+    "scope_prf": (1.0, 10 / 11, 1.0),      # WO-C3: overrides removed; Bs22 caught natively, Bp01 the
+                                           # sole honest FN (general claim vs infant-only source) -> 10/11
     "control_specificity": (9, 9),
-    "overall_accuracy": (30, 30),
+    "overall_accuracy": (29, 30),          # WO-C3: Bp01 is now an honest scope FN (was propped) -> 29/30
     "n": 30, "n_errors": 0,
     "accuracy_exact": 16 / 27,
     "accuracy_adjacent": 1.0,
@@ -172,16 +173,18 @@ class OfflineReproductionTests(unittest.TestCase):
             else:
                 self.assertEqual(r["retraction_verdict"], "NOT_RETRACTED")
 
-    def test_scope_reconciled_to_live_opus_c3(self):
-        # Refinement 1: Bs22 (species) and Bp01 (population) carry the DEPLOYED live SCOPE_MISMATCH,
-        # so offline scope recall is 1.0 (not the lexical-stub 0.80).
+    def test_scope_stands_on_real_opus_c3(self):
+        # WO-C3: the _LIVE_SCOPE_OVERRIDES props are REMOVED — cal30 scope stands on the real
+        # deterministic Opus-C3 result. Bs22 is caught NATIVELY on the species axis (a Humans-scoped
+        # claim citing an animal-only source). Bp01 is a genuine, honest FN (a bare general human claim
+        # citing an infant-only source — indistinguishable at claim level from the SUPPORTED Ce03/Ce11
+        # controls, so it is not flagged, to hold the specificity floor). scope recall = 10/11.
         rows = {r["case_id"]: r for r in S._load_results(RESULTS_CAL30)}
         self.assertTrue(rows["Bs22"]["pred_scope"])
         self.assertEqual(rows["Bs22"]["species_scope_verdict"], "SCOPE_MISMATCH")
-        self.assertTrue(rows["Bp01"]["pred_scope"])
-        self.assertEqual(rows["Bp01"]["population_scope_verdict"], "SCOPE_MISMATCH")
-        self.assertEqual(self.res["scope"]["prf"], (1.0, 1.0, 1.0))
-        self.assertEqual(self.res["scope"]["missed"], [])
+        self.assertFalse(rows["Bp01"]["pred_scope"])          # honest FN, not propped
+        self.assertEqual(self.res["scope"]["prf"], (1.0, 10 / 11, 1.0))
+        self.assertEqual(self.res["scope"]["missed"], ["Bp01"])
 
 
 class DeterminismAndPurityTests(unittest.TestCase):

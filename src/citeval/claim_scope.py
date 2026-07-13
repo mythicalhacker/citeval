@@ -161,6 +161,22 @@ _ORGANISM_CANON = {
     "monkeys": "Macaca mulatta", "non-human primate": "Macaca mulatta",
     "non-human primates": "Macaca mulatta", "macaca mulatta": "Macaca mulatta",
     "animal": "Animals", "animals": "Animals",
+    # Over-generalization stance: a broad, unqualified biological/clinical finding with no organism
+    # marker reads as implicitly organism-general. objective_axes.species_axis flags it only against
+    # an animal-only source, so it never over-fires on a human-inclusive citation.
+    "general": "general", "broad": "general", "general/unqualified": "general",
+}
+
+# Canonicalize model population values the same way organism is canonicalized — absorb plural/synonym/
+# phrasing variance ("general population", "adults", "children") that a bare allowlist would silently
+# drop to None, disabling the population over-generalization stance. Unknown values map to None (reject
+# garbage), preserving the honesty rule.
+_POPULATION_CANON = {
+    "pediatric": "pediatric", "paediatric": "pediatric", "children": "pediatric", "child": "pediatric",
+    "infant": "pediatric", "infants": "pediatric", "neonatal": "pediatric", "neonate": "pediatric",
+    "adult": "adult", "adults": "adult", "elderly": "adult", "aged": "adult", "older adults": "adult",
+    "general": "general", "general population": "general", "broad": "general", "all ages": "general",
+    "people": "general", "individuals": "general", "patients": "general",
 }
 
 SYSTEM_PROMPT = """\
@@ -174,16 +190,27 @@ only the scope the claim's wording asserts.
 
 Fields (all required):
 - "organism": the species/population the claim asserts its finding APPLIES TO — one of \
-"Humans", "Mice", "Rats", "Macaca mulatta", "Animals", or null. Use null when the \
-claim asserts no organism scope.
+"Humans", "Mice", "Rats", "Macaca mulatta", "Animals", "general", or null. Use "general" \
+when the claim states a broad, unqualified biological/physiological/clinical FINDING with \
+no organism marker and no hedge (it reads as a universal fact, implicitly organism-general). \
+Use null ONLY when the claim is a purely molecular / in-vitro / cell-culture / signaling \
+MECHANISM where the organism is not the operative axis.
 - "organism_evidence": array of the EXACT words copied verbatim from the claim that \
-establish the organism (e.g. "in mice", "clinical benefits"). Empty array if organism is null.
+establish the organism (e.g. "in mice", "clinical benefits"); for "general", copy the \
+verbatim phrase naming the broad finding (e.g. "decreased levels of circulating triglycerides"). \
+Empty array if organism is null.
 - "organism_provenance": "text-grounded" if an explicit species/human marker word is \
 present ("humans", "patients", "clinical", "in mice", "rats", ...); "model-inferred" if \
-the organism is inferred from an implicit relevance claim with no explicit marker; \
-"none" if organism is null.
-- "population": "pediatric", "adult", or null.
-- "population_evidence": array of exact verbatim words for the population, else [].
+the organism is inferred from an implicit relevance claim or from a broad unqualified finding \
+("general"); "none" if organism is null.
+- "population": "pediatric", "adult", "general", or null. Use "general" when the claim \
+asserts applicability to patients / individuals / people, or states a general clinical or \
+physiological fact, with NO explicit pediatric or pregnancy qualifier. Use "adult" only when \
+adulthood is specifically implied ("elderly", "older adults"). Use null when the claim is \
+population-irrelevant (a pure molecular / in-vitro finding with no people referent).
+- "population_evidence": array of exact verbatim words for the population (e.g. "patients", \
+"obese individuals"), else []. For a "general" population that is a people-less general/physiological \
+FACT with no population word, copy the SAME verbatim finding phrase you used for organism_evidence.
 - "effect": a short verbatim phrase naming the asserted effect/finding, or null.
 - "direction": the asserted direction of the effect — "increase", "decrease", \
 "no_change", or null when the claim asserts no clear direction. "increase" = the claim \
@@ -205,12 +232,27 @@ the recovery of motor function", "can be targeted for various therapeutic purpos
 "used to treat ... patients" — asserts human/clinical scope => organism "Humans", \
 organism_provenance "model-inferred". Set "tier" to "medium" when the relevance claim \
 is clear, lower when weak.
-- Do NOT over-assert. "in mice" => "Mice", never "Humans". A claim that only DESCRIBES \
-a mechanism with no relevance claim asserts no organism => null. A HEDGED claim \
-("whether this holds in humans is unknown", "may eventually translate to humans") does \
-NOT assert human scope — do not report "Humans".
-- When genuinely unsure whether an implicit relevance claim is present, LOWER the tier \
-rather than force the call.
+- OVER-GENERALIZATION (organism "general"): a broad, unqualified biological/physiological/ \
+clinical finding stated as a universal fact, with NO organism marker, NO hedge, and NO \
+explicit human/therapeutic framing — e.g. "decreased levels of circulating triglycerides \
+and increased HDL", "excessive VEGF-A causes collapsing glomerulopathy", "a diet rich in \
+simple sugars enhances ROS production" => organism "general", organism_provenance \
+"model-inferred", tier "medium" (lower when weak). This is distinct from "Humans": use \
+"Humans" when the claim frames human/clinical/therapeutic relevance, "general" for a bare \
+universal biological finding.
+- Do NOT over-assert. "in mice" / "murine" / "in an animal model" / "preclinical" / \
+"in vivo model" => that animal organism, NEVER "Humans" or "general". A HEDGED claim \
+("may", "might", "could suggest", "reportedly", "whether this holds in humans is unknown", \
+"may eventually translate to humans") does NOT assert a broad scope — organism null (or the \
+literal animal if named). A purely molecular / in-vitro / cell-culture / receptor-signaling \
+MECHANISM with no organismal finding => organism null (not "general").
+- POPULATION: a claim about "patients" / "individuals" / "people" or a general clinical or \
+physiological fact, with no pediatric or pregnancy qualifier => population "general" (or \
+"adult" if adulthood is specifically implied). A claim explicitly about children/infants => \
+"pediatric"; explicitly about pregnant women => keep that literal scope, population null \
+(it asserts the narrow scope, not a broad one). A pure molecular/in-vitro claim => null.
+- When genuinely unsure whether a broad-scope assertion is present, LOWER the tier or use \
+null rather than force the call.
 - Every string in the *_evidence arrays MUST be an exact substring copied verbatim from \
 the claim.\
 """
@@ -295,9 +337,18 @@ def _frame_from_model(atomic_claim: str, data: dict) -> ScopeFrame:
         org_ev = []
 
     population = data.get("population")
-    population = population.strip().lower() \
-        if isinstance(population, str) and population.strip().lower() in ("pediatric", "adult") else None
+    population = _POPULATION_CANON.get(population.strip().lower()) \
+        if isinstance(population, str) and population.strip() else None
     pop_ev = _verbatim_spans(data.get("population_evidence"), atomic_claim)
+    # A bare "general" population stance (a people-less general/physiological FACT — "a diet rich in
+    # simple sugars enhances ROS production") has no population word to copy verbatim; ground it in the
+    # SAME finding phrase already grounding the "general" organism stance, so the honesty rule is
+    # satisfied without the model inventing a population span. Without this the population axis (incl.
+    # the pregnancy check) could never fire for the exact people-less class the stance targets.
+    if population == "general" and not pop_ev and organism == "general" and org_ev:
+        pop_ev = list(org_ev)
+    # Honesty rule (as for organism): a populated population stance carries a verbatim span. With no such
+    # span (and no "general" finding phrase to borrow) the assertion is ungrounded, so drop it.
     if population is not None and not pop_ev:
         population = None
         pop_ev = []

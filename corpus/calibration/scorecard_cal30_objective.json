@@ -1,0 +1,346 @@
+{
+  "n": 30,
+  "graded": false,
+  "retraction": {
+    "tp": 10,
+    "fp": 0,
+    "fn": 0,
+    "tn": 20,
+    "prf": [
+      1.0,
+      1.0,
+      1.0
+    ]
+  },
+  "scope": {
+    "tp": 10,
+    "fp": 0,
+    "fn": 1,
+    "tn": 9,
+    "prf": [
+      1.0,
+      0.9090909090909091,
+      1.0
+    ],
+    "missed": [
+      "Bp01"
+    ]
+  },
+  "control_specificity": [
+    9,
+    9
+  ],
+  "overall_accuracy": [
+    29,
+    30
+  ],
+  "a_scope_observational": [
+    "A17",
+    "A25"
+  ],
+  "code_version": "WO-C3 scope over-generalization (live Opus-4.8 C3, objective-only)",
+  "errors": [],
+  "n_errors": 0,
+  "rows": [
+    {
+      "case_id": "A02",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "CLAIM_SCOPE_UNSTATED",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A09",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "CLAIM_SCOPE_UNSTATED",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A10",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "CLAIM_SCOPE_UNSTATED",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A13",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A14",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A16",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "CLAIM_SCOPE_UNSTATED",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A17",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": true,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER + CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A25",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": true,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER + CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A27",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "A28",
+      "gt": "RETRACTED",
+      "pred_retraction": true,
+      "pred_scope": false,
+      "overall": "CITATION RELIES ON A RETRACTED PAPER",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "RELIES_ON_RETRACTED"
+    },
+    {
+      "case_id": "Bs05",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs07",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs09",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs11",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs12",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs15",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs16",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs17",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs19",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bs22",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": true,
+      "overall": "CLAIM NOT SUPPORTED (species scope mismatch)",
+      "species_verdict": "SCOPE_MISMATCH",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Bp01",
+      "gt": "SCOPE_MISMATCH",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch03",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch05",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch10",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "CLAIM_SCOPE_UNSTATED",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch13",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "NOT_ASSESSED",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch15",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ch16",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ce03",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ce11",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    },
+    {
+      "case_id": "Ce13",
+      "gt": "SUPPORTED",
+      "pred_retraction": false,
+      "pred_scope": false,
+      "overall": "NO OBJECTIVE-AXIS PROBLEM DETECTED \u2014 substantive support not yet adjudicated (stub)",
+      "species_verdict": "SCOPE_CONSISTENT",
+      "population_verdict": "SCOPE_CONSISTENT",
+      "retraction_verdict": "NOT_RETRACTED"
+    }
+  ]
+}

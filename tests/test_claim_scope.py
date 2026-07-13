@@ -223,6 +223,69 @@ class ModelPathTests(unittest.TestCase):
         frame = cs.parse_claim_scope_model(B01, client=client)
         self.assertEqual(frame.organism, "Humans")
 
+    def test_general_organism_stance_accepted(self):
+        """WO-C3 over-generalization: a broad unqualified finding -> organism 'general',
+        model-inferred, grounded in the verbatim finding phrase (lets species_scope flag it
+        against an animal-only source)."""
+        claim = "Decreased levels of circulating triglycerides and increased levels of HDL."
+        client = FakeClient(_reply(
+            organism="general", organism_evidence=["circulating triglycerides"],
+            organism_provenance="model-inferred", tier="medium"))
+        frame = cs.parse_claim_scope_model(claim, client=client)
+        self.assertEqual(frame.organism, "general")
+        self.assertEqual(frame.provenance, "model-inferred")
+        self.assertEqual(frame.organism_evidence, ["circulating triglycerides"])
+
+    def test_general_organism_dropped_without_verbatim_span(self):
+        """Honesty rule applies to 'general' too: no surviving span -> dropped to null."""
+        client = FakeClient(_reply(
+            organism="general", organism_evidence=["not in the claim"],
+            organism_provenance="model-inferred", tier="medium"))
+        frame = cs.parse_claim_scope_model("Some mechanistic statement.", client=client)
+        self.assertIsNone(frame.organism)
+
+    def test_general_population_stance_accepted(self):
+        """A general clinical/physiological fact -> population 'general', grounded in a
+        verbatim people/patient phrase (lets population_scope flag a pediatric/pregnancy source)."""
+        claim = "Leptin is one of the causes involved in immune disorders in obese individuals."
+        client = FakeClient(_reply(
+            organism="general", organism_evidence=["immune disorders"],
+            population="general", population_evidence=["obese individuals"], tier="medium"))
+        frame = cs.parse_claim_scope_model(claim, client=client)
+        self.assertEqual(frame.population, "general")
+        self.assertEqual(frame.population_evidence, ["obese individuals"])
+
+    def test_general_population_dropped_without_verbatim_span(self):
+        client = FakeClient(_reply(population="general", population_evidence=["patients"]))
+        frame = cs.parse_claim_scope_model("A purely molecular interaction.", client=client)
+        self.assertIsNone(frame.population)  # no 'patients' substring -> ungrounded -> dropped
+
+    def test_general_population_grounded_in_finding_phrase(self):
+        """Review #1: a people-less general FACT has no population word — the 'general' population
+        stance borrows the 'general' organism finding phrase so it survives the honesty rule (else the
+        population axis, incl. the pregnancy check, could never fire for this class)."""
+        claim = "A diet rich in simple sugars enhances ROS production."
+        phrase = "enhances ROS production"
+        client = FakeClient(_reply(
+            organism="general", organism_evidence=[phrase], organism_provenance="model-inferred",
+            population="general", population_evidence=[], tier="medium"))
+        frame = cs.parse_claim_scope_model(claim, client=client)
+        self.assertEqual(frame.population, "general")
+        self.assertEqual(frame.population_evidence, [phrase])
+
+    def test_population_canon_absorbs_phrasing_variance(self):
+        """Review #2: 'general population'/'adults'/'children' canonicalize (not silently -> None)."""
+        claim = "The finding applies across the general population of adults."
+        for raw, canon, ev in [("general population", "general", ["general population"]),
+                               ("adults", "adult", ["adults"])]:
+            frame = cs.parse_claim_scope_model(
+                claim, client=FakeClient(_reply(population=raw, population_evidence=ev)))
+            self.assertEqual(frame.population, canon)
+        # garbage still rejected
+        junk = cs.parse_claim_scope_model(
+            claim, client=FakeClient(_reply(population="mice-only", population_evidence=["adults"])))
+        self.assertIsNone(junk.population)
+
     def test_dose_stated_string_false_not_truthy(self):
         """A stringified boolean must not fabricate a dose flag (invariant #3)."""
         yes = cs.parse_claim_scope_model(B01, client=FakeClient(_reply(dose_stated="false")))
