@@ -1,0 +1,18 @@
+# web/ (Vite) build + dependency artifacts
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# vite / tsc caches
+.vite/
+node_modules/.tmp/
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / OS
+.DS_Store
+*.log
