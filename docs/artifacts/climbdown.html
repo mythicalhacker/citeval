@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caught its own propped metric · citeval</title>
+<style>
+:root{
+  --plane:#f4f4f1; --surface:#fcfcfb; --surface-2:#f6f6f2;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,.10);
+  --accent:#2a78d6; --accent-soft:#e7f0fc;
+  --good:#0ca30c; --good-ink:#006300; --warn:#e08e00; --serious:#d5622e; --critical:#c0392b;
+  --pos:#1baf7a; --neg:#e34948;
+  /* 6-level severity ramp: best -> worst */
+  --sev0:#0ca30c; --sev1:#7fae10; --sev2:#e0a500; --sev3:#e07b1f; --sev4:#d4562a; --sev5:#c0392b;
+  --code-bg:#f2f1ec;
+}
+:root[data-theme="dark"]{
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+  --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+  --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+  --accent:#3987e5; --accent-soft:#16233a;
+  --good:#0ca30c; --good-ink:#22c55e; --warn:#fab219; --serious:#ec835a; --critical:#e05656;
+  --pos:#199e70; --neg:#e66767;
+  --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+  --code-bg:#232220;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+    --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+    --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+    --accent:#3987e5; --accent-soft:#16233a;
+    --good-ink:#22c55e; --critical:#e05656;
+    --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+    --code-bg:#232220;
+  }
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.55;letter-spacing:.005em}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:.08em .38em;border-radius:5px;font-size:.86em}
+h1,h2,h3{line-height:1.2;letter-spacing:-.01em;margin:0}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px 96px}
+.tnums{font-variant-numeric:tabular-nums}
+
+/* --- top bar / nav --- */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--plane) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--hair)}
+.topbar-in{max-width:1060px;margin:0 auto;padding:9px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-weight:750;letter-spacing:-.02em;font-size:15px;white-space:nowrap}
+.brand .dot{color:var(--accent)}
+.nav{display:flex;gap:3px;flex-wrap:wrap;flex:1}
+.nav a{font-size:12.5px;font-weight:560;color:var(--ink-2);padding:5px 9px;border-radius:7px;white-space:nowrap}
+.nav a:hover{background:var(--surface-2);text-decoration:none}
+.nav a.on{background:var(--accent-soft);color:var(--accent)}
+.themetog{border:1px solid var(--hair);background:var(--surface);color:var(--ink-2);
+  border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600}
+.themetog:hover{background:var(--surface-2)}
+
+/* --- hero --- */
+.hero{padding:44px 0 10px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:clamp(27px,4.4vw,42px);font-weight:800;margin:12px 0 0}
+.lede{font-size:clamp(16px,1.9vw,19px);color:var(--ink-2);margin:16px 0 0;max-width:70ch}
+.kicker{margin-top:16px;font-size:13.5px;color:var(--muted)}
+.kicker b{color:var(--ink-2);font-weight:650}
+
+/* --- cards & sections --- */
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;
+  padding:22px 24px;margin:20px 0;box-shadow:0 1px 0 var(--hair)}
+.card h2{font-size:20px;font-weight:750;margin-bottom:4px}
+.card h3{font-size:15px;font-weight:700;margin:18px 0 6px}
+.sec-note{color:var(--ink-2);font-size:14.5px;margin:6px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* --- stat tiles --- */
+.tile{background:var(--surface-2);border:1px solid var(--hair);border-radius:12px;padding:15px 17px}
+.tile .lab{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:5px;line-height:1}
+.tile .sub{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+
+/* --- badges --- */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:2.5px 9px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;vertical-align:middle}
+.b-good{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good-ink)}
+.b-warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--serious)}
+.b-crit{background:color-mix(in srgb,var(--critical) 16%,transparent);color:var(--critical)}
+.b-neu{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--hair)}
+.b-accent{background:var(--accent-soft);color:var(--accent)}
+
+/* --- bars --- */
+.bar-track{position:relative;height:20px;background:var(--surface-2);border:1px solid var(--hair);
+  border-radius:6px;overflow:hidden}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 4px 4px 5px}
+.bar-row{display:grid;grid-template-columns:150px 1fr 74px;gap:12px;align-items:center;margin:9px 0}
+.bar-row .rl{font-size:13px;color:var(--ink-2);font-weight:600}
+.bar-row .rv{font-size:13.5px;font-weight:750;text-align:right}
+@media (max-width:560px){.bar-row{grid-template-columns:110px 1fr 56px}}
+
+/* --- tables --- */
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+table.dt th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--axis)}
+table.dt td{padding:9px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+table.dt tr:last-child td{border-bottom:none}
+
+/* --- quotes / spans --- */
+.span{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;
+  background:var(--code-bg);border-left:3px solid var(--accent);border-radius:0 7px 7px 0;
+  padding:9px 13px;color:var(--ink-2);margin:8px 0}
+.callout{border:1px solid var(--hair);border-left:4px solid var(--accent);background:var(--surface-2);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:16px 0}
+.callout.warn{border-left-color:var(--warn)}
+.callout.crit{border-left-color:var(--critical)}
+.small{font-size:12.5px;color:var(--muted)}
+.prov{font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace}
+hr.rule{border:none;border-top:1px solid var(--hair);margin:26px 0}
+
+/* --- footer --- */
+.foot{border-top:1px solid var(--hair);margin-top:40px;padding-top:20px;color:var(--muted);font-size:12.5px}
+.foot a{color:var(--ink-2)}
+.foot .xlinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.foot .xlinks a{border:1px solid var(--hair);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600}
+.foot .xlinks a:hover{background:var(--surface-2);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="topbar-in"><span class="brand">cite<span class="dot">·</span>val</span><nav class="nav"><a class="navlink" href="index.html">Overview</a><a class="navlink on" href="climbdown.html">1 · Climb-down</a><a class="navlink" href="spin_spectrum.html">2 · Spin spectrum</a><a class="navlink" href="tiebreak_console.html">3 · Blind tiebreak</a><a class="navlink" href="debate_replay.html">4 · Debate replay</a></nav><button class="themetog" onclick="__toggleTheme()" aria-label="Toggle colour theme">◐ theme</button></div></div>
+<main class="wrap">
+<section class="hero"><div class="eyebrow">Innovation · the most verifiable claim</div><h1>It caught its <span style="color:var(--critical)">own propped metric</span> — and published the climb-down</h1><p class="lede">The strongest evidence that citeval’s discipline is real: it ran its own held-out test, watched a “perfect” in-domain scope score collapse out-of-sample, deleted the shortcut that propped it, and committed the honest, lower number. Twice.</p><div class="kicker">Every figure below is read at build time from <b>corpus/calibration/gate_thresholds.json</b>, <b>calibration_map.json</b>, and <b>graded_reference_v2.jsonl</b> — nothing is retyped.</div></section><div class="grid3"><div class="tile"><div class="lab">In-domain, propped</div><div class="val" style="color:var(--muted)">1.00</div><div class="sub">scope recall on cal30 — via a hardcoded override</div></div><div class="tile"><div class="lab">Held-out, real</div><div class="val" style="color:var(--critical)">0.294</div><div class="sub">same logic on the 45-case ext set it had never seen</div></div><div class="tile"><div class="lab">Honest, after the fix</div><div class="val" style="color:var(--good-ink)">0.71</div><div class="sub">held-out recall once the override was removed</div></div></div><div class="card"><h2>Act I · The mirage and the collapse</h2><p class="sec-note">In-domain, the species/population scope axis scored a perfect <b>1.00</b> recall on the 30-case calibration set. That number was <b>propped</b>: a hardcoded shortcut, <code>regen_results._LIVE_SCOPE_OVERRIDES</code>, hand-pinned the answers for the cases it knew. Held out on 45 unseen cases, the same logic told the truth.</p><h3>Scope recall — the same axis, three different honesties</h3><div class="bar-row"><div class="rl">cal30 (propped)</div><div class="bar-track"><div class="bar-fill" style="width:100.0%;background:var(--muted)"></div></div><div class="rv tnums" style="color:var(--muted)">1.00</div></div><div class="bar-row"><div class="rl">ext-45 held-out — before</div><div class="bar-track"><div class="bar-fill" style="width:29.4%;background:var(--critical)"></div></div><div class="rv tnums" style="color:var(--critical)">0.294</div></div><div class="bar-row"><div class="rl">ext-45 held-out — after fix</div><div class="bar-track"><div class="bar-fill" style="width:71.0%;background:var(--good)"></div></div><div class="rv tnums" style="color:var(--good)">0.71</div></div><div class="bar-row"><div class="rl">cal30 honest — after fix</div><div class="bar-track"><div class="bar-fill" style="width:90.9%;background:var(--sev1)"></div></div><div class="rv tnums" style="color:var(--sev1)">0.909</div></div><p class="small" style="margin-top:10px">The bar that matters is the red one: on data it had never seen, real recall was <b>0.294</b>, not 1.00 — a <b>70-point</b> gap between the metric shown and the capability that existed.</p><div class="callout crit"><b>The climb-down commit.</b> <code>5ed605c</code> &mdash; <i>"WO-C3 scope: catch implicit-species + pregnancy/adult population over-generalizations (ext recall 0.294-&gt;0.71); de-prop cal30 scope"</i> The override was deleted, the underlying C3 claim-scope logic was rewritten to earn the number, and the gate floor was <b>lowered</b> 0.95&rarr;0.90 to sit on the honest capability rather than the propped one.</div><div class="grid3" style="margin-top:4px"><div class="tile"><div class="lab">Held-out precision</div><div class="val" style="color:var(--good-ink)">0.83 → 0.92</div><div class="sub">ext-45, before → after the fix</div></div><div class="tile"><div class="lab">Held-out specificity</div><div class="val" style="color:var(--ink-2)">0.94</div><div class="sub">held flat — no controls sacrificed</div></div><div class="tile"><div class="lab">In-domain now</div><div class="val" style="color:var(--ink-2)">10/11 caught</div><div class="sub">precision 1.00 · control-spec 1.00</div></div></div><div class="callout"><b>The one it still misses is an honest miss.</b> The single remaining in-domain false negative is <code>Bp01</code> — a bare "general human" claim citing an infant-only paper. Flagging it would require flagging the identically-shaped <b>controls</b> Ce03 / Ce11 (also general-vs-pediatric), which would false-positive genuine SUPPORTED cases below the specificity floor. So it is left un-flagged, <b>precision-first</b>, and disclosed — not quietly patched with another override.</div></div><div class="card"><h2>Act II · It happened a second time — and got the same treatment</h2><p class="sec-note">The graded (substantive-support) axis had its own inflated tail: a handful of <b>confident-but-wrong</b> grades. The fix was re-measurement, not threshold-juicing. A "confident-wrong" case is defined structurally in the same gate file &mdash; self-consistency ≥ <code>0.85</code> <i>and</i> ordinal distance ≥ <code>2</code> from the reference.</p><div class="grid3"><div class="tile"><div class="lab">Quadratic-weighted κ</div><div class="val" style="color:var(--good-ink)">0.69 → 0.90</div><div class="sub">agreement with the independent reference</div></div><div class="tile"><div class="lab">±1 adjacency</div><div class="val" style="color:var(--good-ink)">0.85 → 1.00</div><div class="sub">every graded case now within one level</div></div><div class="tile"><div class="lab">Confident-wrong cases</div><div class="val" style="color:var(--good-ink)">0</div><div class="sub">genuine errors remaining after the re-grade</div></div></div><div class="callout crit"><b>The second climb-down commit.</b> <code>8aa0ff6</code> &mdash; <i>"gate: reseed cal30 baseline after C4 re-grade — confident-wrong tail cleared (qwk 0.69-&gt;0.90, adjacent 0.85-&gt;1.0, ECE 0.157-&gt;0.079); refit Platt map; update reproduction tests"</i> The clearest case in that tail is <b>Ce11</b>: a split vote the pre-regrade aggregation collapsed into a silent abstention. You can <a href="debate_replay.html">replay it round-by-round</a> — alongside the clean, unanimous <b>A27</b> — and watch Ce11’s pre-regrade snapshot abstain where the fixed aggregation now grades it correctly, at an honest <i>low</i> tier.</div><p class="small">Exact-match is <b>0.593</b> (16/27) and coverage <b>0.964</b> — deliberately un-juiced: the reference itself never escalates to the two harshest grades, so citeval doesn’t manufacture agreement it can’t earn. See the <a href="spin_spectrum.html">spin spectrum</a> for why level 3 is empty.</p></div><div class="card"><h2>Act III · Then it measured whether its confidence was even honest</h2><p class="sec-note">Using the model’s raw self-consistency agreement directly as a confidence probability is <b>overconfident</b>. citeval measured the miscalibration (expected calibration error) instead of assuming it away, then fit a monotonic Platt map to correct it — and reported that AUROC is unchanged, because a monotonic map <i>cannot</i> change ranking.</p><h3>Expected calibration error (lower is better)</h3><div class="bar-row"><div class="rl">raw a_exact as confidence</div><div class="bar-track"><div class="bar-fill" style="width:79.4%;background:var(--critical)"></div></div><div class="rv tnums" style="color:var(--critical)">0.32</div></div><div class="bar-row"><div class="rl">recalibrated (Platt, LOO-CV)</div><div class="bar-track"><div class="bar-fill" style="width:19.7%;background:var(--good)"></div></div><div class="rv tnums" style="color:var(--good)">0.079</div></div><p class="small" style="margin-top:8px">The raw figure is <b>computed here</b> from <code>graded_predictions_cal30.jsonl</code>: across 27 graded cases the model’s mean self-reported confidence is <b>0.91</b> while its exact-match accuracy is only <b>0.59</b> — a 32-point overconfidence gap the Platt map closes. (This raw-vs-recalibrated <b>0.32 → 0.079</b> is a different measurement from the <code>0.157 → 0.079</code> in Act II’s commit quote, which tracks the recalibrated ECE across the re-grade.)</p><div class="grid3" style="margin-top:14px"><div class="tile"><div class="lab">AUROC</div><div class="val" style="color:var(--ink-2)">0.64</div><div class="sub">unchanged — Platt scaling is monotonic</div></div><div class="tile"><div class="lab">Platt map</div><div class="val" style="color:var(--ink-2)">A=3.02, B=-2.38</div><div class="sub">fit on 27 exact-correct · platt</div></div><div class="tile"><div class="lab">Reference</div><div class="val" style="color:var(--ink-2)">graded_reference_v2</div><div class="sub">an independent AI grader, not the system under test</div></div></div><p class="small" style="margin-top:12px">The recalibration is <b>opt-in and fails closed</b>: with A ≤ 0 it declines to “correct” anything rather than silently invert confidence.</p></div><div class="card"><h2>The receipt · case A25, the fabricated attribution</h2><p class="sec-note">The submission’s headline mismatch is not a toy: it is a real graded case with a verbatim decisive span you can check against the cited paper. A claim about <b>Mfn2 inhibiting vascular smooth-muscle proliferation</b> (with a fabricated 95.2% rat/human homology figure) is pinned to a paper that is actually about <b>miR-214 in fibroblast differentiation for pelvic-floor dysfunction in rats</b>.</p><table class="dt"><tbody><tr><th style="width:130px">Case</th><td><code>A25</code> <span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span> <span class="badge b-neu">grader confidence: low</span></td></tr><tr><th>Why</th><td>The abstract concerns miR-214 targeting Mfn2 in fibroblast differentiation of ADMSCs during pelvic floor dysfunction; it says nothing about Mfn2 inhibiting VSMC proliferation, its independence from mitochondrial fusion, or rat/human Mfn2 homology (95.2%). Abstract only, so confidence is low.</td></tr><tr><th>Decisive span<br><span class="prov">verbatim from the cited paper</span></th><td><div class="span">The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.</div></td></tr><tr><th>Provenance</th><td class="prov">llm-fulltext-claude-science &middot; source: corpus/calibration/graded_reference_v2.jsonl</td></tr></tbody></table></div><hr class="rule"><p class="small">A held-out metric collapse is old news in ML. <b>Publishing your own</b> — deleting the prop, lowering the gate to the honest number, and leaving the disclosure in the commit log — is the rare part, and the best reason to trust the rest of the claims.</p>
+<footer class="foot"><div>Built offline from committed data — no model calls, no API key. Regenerate with <code>python docs/build_artifacts/build_all.py</code>. Figures trace to the committed calibration corpus, the frozen grade vocabulary, and the git history each page cites.</div><div class="xlinks"><a href="index.html"><b>Overview</b> — The discipline, made visible</a><a href="spin_spectrum.html"><b>2 · Spin spectrum</b> — A 6-level ordinal the field&#x27;s benchmarks don&#x27;t have</a><a href="tiebreak_console.html"><b>3 · Blind tiebreak</b> — 6 disagreements, an independent third read, 4/6 — losses shown</a><a href="debate_replay.html"><b>4 · Debate replay</b> — The adversarial triad, replayed from the frozen transcript</a></div></footer>
+</main>
+
+<script>
+(function(){try{var t=localStorage.getItem('citeval-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+function __toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('data-theme');
+ var next = cur==='dark' ? 'light' : (cur==='light' ? 'dark' : (matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'));
+ r.setAttribute('data-theme',next);try{localStorage.setItem('citeval-theme',next);}catch(e){}}
+</script>
+
+</body>
+</html>

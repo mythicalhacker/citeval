@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind held-out tiebreak console · citeval</title>
+<style>
+:root{
+  --plane:#f4f4f1; --surface:#fcfcfb; --surface-2:#f6f6f2;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --hair:rgba(11,11,11,.10);
+  --accent:#2a78d6; --accent-soft:#e7f0fc;
+  --good:#0ca30c; --good-ink:#006300; --warn:#e08e00; --serious:#d5622e; --critical:#c0392b;
+  --pos:#1baf7a; --neg:#e34948;
+  /* 6-level severity ramp: best -> worst */
+  --sev0:#0ca30c; --sev1:#7fae10; --sev2:#e0a500; --sev3:#e07b1f; --sev4:#d4562a; --sev5:#c0392b;
+  --code-bg:#f2f1ec;
+}
+:root[data-theme="dark"]{
+  --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+  --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+  --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+  --accent:#3987e5; --accent-soft:#16233a;
+  --good:#0ca30c; --good-ink:#22c55e; --warn:#fab219; --serious:#ec835a; --critical:#e05656;
+  --pos:#199e70; --neg:#e66767;
+  --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+  --code-bg:#232220;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --plane:#0d0d0d; --surface:#1a1a19; --surface-2:#201f1d;
+    --ink:#f5f5f0; --ink-2:#c3c2b7; --muted:#8f8d86;
+    --grid:#2c2c2a; --axis:#383835; --hair:rgba(255,255,255,.12);
+    --accent:#3987e5; --accent-soft:#16233a;
+    --good-ink:#22c55e; --critical:#e05656;
+    --sev0:#22b422; --sev1:#8fbf1c; --sev2:#e0a500; --sev3:#e8863a; --sev4:#e0603a; --sev5:#e05656;
+    --code-bg:#232220;
+  }
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:16px;line-height:1.55;letter-spacing:.005em}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code,kbd,.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:.08em .38em;border-radius:5px;font-size:.86em}
+h1,h2,h3{line-height:1.2;letter-spacing:-.01em;margin:0}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px 96px}
+.tnums{font-variant-numeric:tabular-nums}
+
+/* --- top bar / nav --- */
+.topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--plane) 86%,transparent);
+  backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--hair)}
+.topbar-in{max-width:1060px;margin:0 auto;padding:9px 22px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-weight:750;letter-spacing:-.02em;font-size:15px;white-space:nowrap}
+.brand .dot{color:var(--accent)}
+.nav{display:flex;gap:3px;flex-wrap:wrap;flex:1}
+.nav a{font-size:12.5px;font-weight:560;color:var(--ink-2);padding:5px 9px;border-radius:7px;white-space:nowrap}
+.nav a:hover{background:var(--surface-2);text-decoration:none}
+.nav a.on{background:var(--accent-soft);color:var(--accent)}
+.themetog{border:1px solid var(--hair);background:var(--surface);color:var(--ink-2);
+  border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600}
+.themetog:hover{background:var(--surface-2)}
+
+/* --- hero --- */
+.hero{padding:44px 0 10px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.hero h1{font-size:clamp(27px,4.4vw,42px);font-weight:800;margin:12px 0 0}
+.lede{font-size:clamp(16px,1.9vw,19px);color:var(--ink-2);margin:16px 0 0;max-width:70ch}
+.kicker{margin-top:16px;font-size:13.5px;color:var(--muted)}
+.kicker b{color:var(--ink-2);font-weight:650}
+
+/* --- cards & sections --- */
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;
+  padding:22px 24px;margin:20px 0;box-shadow:0 1px 0 var(--hair)}
+.card h2{font-size:20px;font-weight:750;margin-bottom:4px}
+.card h3{font-size:15px;font-weight:700;margin:18px 0 6px}
+.sec-note{color:var(--ink-2);font-size:14.5px;margin:6px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* --- stat tiles --- */
+.tile{background:var(--surface-2);border:1px solid var(--hair);border-radius:12px;padding:15px 17px}
+.tile .lab{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tile .val{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:5px;line-height:1}
+.tile .sub{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+
+/* --- badges --- */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;
+  padding:2.5px 9px;border-radius:999px;letter-spacing:.02em;white-space:nowrap;vertical-align:middle}
+.b-good{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good-ink)}
+.b-warn{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--serious)}
+.b-crit{background:color-mix(in srgb,var(--critical) 16%,transparent);color:var(--critical)}
+.b-neu{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--hair)}
+.b-accent{background:var(--accent-soft);color:var(--accent)}
+
+/* --- bars --- */
+.bar-track{position:relative;height:20px;background:var(--surface-2);border:1px solid var(--hair);
+  border-radius:6px;overflow:hidden}
+.bar-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px 4px 4px 5px}
+.bar-row{display:grid;grid-template-columns:150px 1fr 74px;gap:12px;align-items:center;margin:9px 0}
+.bar-row .rl{font-size:13px;color:var(--ink-2);font-weight:600}
+.bar-row .rv{font-size:13.5px;font-weight:750;text-align:right}
+@media (max-width:560px){.bar-row{grid-template-columns:110px 1fr 56px}}
+
+/* --- tables --- */
+table.dt{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:6px}
+table.dt th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;padding:8px 10px;border-bottom:1px solid var(--axis)}
+table.dt td{padding:9px 10px;border-bottom:1px solid var(--grid);vertical-align:top}
+table.dt tr:last-child td{border-bottom:none}
+
+/* --- quotes / spans --- */
+.span{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.5;
+  background:var(--code-bg);border-left:3px solid var(--accent);border-radius:0 7px 7px 0;
+  padding:9px 13px;color:var(--ink-2);margin:8px 0}
+.callout{border:1px solid var(--hair);border-left:4px solid var(--accent);background:var(--surface-2);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:16px 0}
+.callout.warn{border-left-color:var(--warn)}
+.callout.crit{border-left-color:var(--critical)}
+.small{font-size:12.5px;color:var(--muted)}
+.prov{font-size:11.5px;color:var(--muted);font-family:ui-monospace,monospace}
+hr.rule{border:none;border-top:1px solid var(--hair);margin:26px 0}
+
+/* --- footer --- */
+.foot{border-top:1px solid var(--hair);margin-top:40px;padding-top:20px;color:var(--muted);font-size:12.5px}
+.foot a{color:var(--ink-2)}
+.foot .xlinks{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.foot .xlinks a{border:1px solid var(--hair);border-radius:8px;padding:6px 11px;font-size:12px;font-weight:600}
+.foot .xlinks a:hover{background:var(--surface-2);text-decoration:none}
+
+.scorecard{padding:24px}
+.score-head{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.bignum{font-size:64px;font-weight:850;letter-spacing:-.03em;line-height:.9;color:var(--accent)}
+.bignum .den{font-size:26px;color:var(--muted);font-weight:700;margin-left:6px}
+.score-title{font-size:17px;font-weight:750}
+.score-sub{font-size:13.5px;color:var(--ink-2);margin-top:4px}
+.seg{display:inline-flex;gap:4px;margin-top:18px;background:var(--surface-2);
+  border:1px solid var(--hair);border-radius:10px;padding:4px;flex-wrap:wrap}
+.segbtn{border:none;background:transparent;color:var(--ink-2);font-size:12.5px;font-weight:650;
+  padding:7px 12px;border-radius:7px;cursor:pointer}
+.segbtn:hover{background:var(--surface)}
+.segbtn.on{background:var(--accent);color:#fff}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;font-size:12.5px;color:var(--ink-2)}
+.mk{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:6px;
+  font-size:11px;font-weight:800;color:#fff;vertical-align:middle}
+.mk-c{background:var(--accent)} .mk-e{background:var(--muted)} .mk-i{background:var(--sev5)}
+.caserow{transition:opacity .18s}
+.caserow.dim{opacity:.34}
+.caseh{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.cid{font-size:15px;font-weight:800;background:var(--code-bg);padding:2px 9px;border-radius:7px}
+.claimq{color:var(--ink-2);font-size:14.5px;margin:12px 0 4px;font-style:italic}
+.verds{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+@media (max-width:640px){.verds{grid-template-columns:1fr}}
+.verd{background:var(--surface-2);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+.vk{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;
+  margin-bottom:8px}
+.vk .prov{text-transform:none;letter-spacing:0;display:block;margin-top:2px}
+.ladder{display:flex;gap:5px;margin:10px 0 4px;flex-wrap:wrap}
+.lcell{flex:1;min-width:52px;background:var(--surface-2);border:1px solid var(--hair);
+  border-top:3px solid;border-radius:8px;padding:6px 4px;text-align:center}
+.lcell-na{border-top-color:var(--muted);border-style:dashed;background:transparent}
+.lnum{display:block;font-size:11px;color:var(--muted);font-weight:700}
+.llab{display:block;font-size:10.5px;color:var(--ink-2);font-weight:650;margin-top:1px}
+.lmk{display:flex;gap:3px;justify-content:center;min-height:21px;margin-top:5px}
+.dist{margin-top:6px}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="topbar-in"><span class="brand">cite<span class="dot">·</span>val</span><nav class="nav"><a class="navlink" href="index.html">Overview</a><a class="navlink" href="climbdown.html">1 · Climb-down</a><a class="navlink" href="spin_spectrum.html">2 · Spin spectrum</a><a class="navlink on" href="tiebreak_console.html">3 · Blind tiebreak</a><a class="navlink" href="debate_replay.html">4 · Debate replay</a></nav><button class="themetog" onclick="__toggleTheme()" aria-label="Toggle colour theme">◐ theme</button></div></div>
+<main class="wrap">
+<section class="hero"><div class="eyebrow">Innovation · the receipt behind “4/6”</div><h1>The blind tiebreak console — <span style="color:var(--accent)">4/6</span>, with the interpretive calls and the losses on the table</h1><p class="lede">Six times, citeval’s grade disagreed with an external reference. A third, <b>blind</b> reader broke each tie. citeval came out ahead 4–2 — but two of those wins need an interpretive call, and two cases are honest losses. Here is exactly how the number is built, so you can lower it to 2/6 yourself if you don’t buy the calls.</p><div class="kicker">All six rows read verbatim from <b>ext_tiebreak_6.json</b>; claims from <b>corpus_cal_ext.jsonl</b>. The tally is computed here, not asserted.</div></section><div class="card scorecard"><div class="score-head"><div class="bignum"><span id="tallyN">4</span><span class="den">/ 6</span></div><div class="score-copy"><div class="score-title" id="tallyTitle">sided with citeval — interpretive calls resolved</div><div class="score-sub" id="tallySub">2 clean agreements + 2 interpretive calls · 2 honest losses shown below</div></div></div><div class="seg" role="tablist"><button class="segbtn on" data-mode="full" onclick="setMode('full')">Full rule → 4/6</button><button class="segbtn" data-mode="strict" onclick="setMode('strict')">Strict: exact only → 2/6</button><button class="segbtn" data-mode="loss" onclick="setMode('loss')">Against citeval → 2/6</button></div><p class="small" style="margin-top:12px"><b>The rule.</b> On the six-level ordinal the blind read “sides with” whichever verdict it lands closer to. An off-scale <code>N/A — non-substantiating</code> read means <i>the paper doesn’t back this claim</i>, so it sides with the more skeptical (higher) of the two grades. <b>Strict</b> counts only exact agreement with citeval; <b>Full</b> adds nearest-ordinal and skeptical-N/A calls.</p><div class="legend"><span><span class="mk mk-c">C</span> citeval C4</span><span><span class="mk mk-e">E</span> external reference</span><span><span class="mk mk-i">I</span> blind independent</span></div></div><div class="card caserow" data-kind="loss" data-counted="0"><div class="caseh"><code class="cid">Ce03</code><span class="badge b-crit">honest loss</span><span class="badge b-neu">depth: fulltext</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“These immunological advantages are thought to provide indirect protection for patients [73].”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev0) 17%,transparent);color:var(--sev0);font-weight:750">fully-supported</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-fulltext-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge b-neu">N/A - non-substantiating</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"></div></div><div class="lcell lcell-na"><span class="lnum">—</span><span class="llab">N/A</span><div class="lmk"><span class="mk mk-i" title="independent">I</span></div></div></div><p class="dist small">off-scale N/A — sides with the more skeptical read, which is the external ref’s → <b>sides with external</b> (skeptical-N/A).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper appraises evidence on patient safety benefits but does not substantiate the specific claim that immunological advantages provide indirect patient protection; likely a background/passing citation.</p></div><div class="card caserow" data-kind="clean-win" data-counted="1"><div class="caseh"><code class="cid">A11</code><span class="badge b-good">clean win</span><span class="badge b-neu">depth: abstract</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“Similarly, evidence suggests this phenotype may predict a higher postmenopausal cardiovascular morbidity and mortality risk than the non-classical phenotype [13].”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev1) 17%,transparent);color:var(--sev1);font-weight:750">supported-with-overreach</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-abstract-only-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge" style="background:color-mix(in srgb,var(--sev1) 17%,transparent);color:var(--sev1);font-weight:750">supported-with-overreach</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span><span class="mk mk-i" title="independent">I</span></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"></div></div></div><p class="dist small">independent is <b>0</b> rungs from citeval, <b>3</b> from the external ref → <b>sides with citeval</b> (exact).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper supports higher postmenopausal CV risk in hyperandrogenic PCOS phenotype, but does not directly compare classical vs non-classical phenotypes as the claim asserts.</p></div><div class="card caserow" data-kind="interp-win" data-counted="1"><div class="caseh"><code class="cid">Bs03</code><span class="badge b-accent">interpretive win</span><span class="badge b-neu">depth: abstract</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“Other components of kefir, such as polysaccharides improved wound healing by stimulating the innate immune response against pathogens present in the wound [129].”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev1) 17%,transparent);color:var(--sev1);font-weight:750">supported-with-overreach</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-abstract-only-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"><span class="mk mk-i" title="independent">I</span></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"></div></div></div><p class="dist small">independent is <b>1</b> rung from citeval, <b>2</b> from the external ref → <b>sides with citeval</b> (nearest-ordinal).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper shows kefir improves infected wound healing, but does not attribute effect to polysaccharides or innate immune stimulation as claimed.</p></div><div class="card caserow" data-kind="clean-win" data-counted="1"><div class="caseh"><code class="cid">A05</code><span class="badge b-good">clean win</span><span class="badge b-neu">depth: abstract</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“Luminal lipid infusions promote satiety via 5-HT3- and CCK1-dependent vagal signaling, and 5-HT3 antagonism contributes to greater food intake by humans [23].”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-abstract-only-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span><span class="mk mk-i" title="independent">I</span></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"></div></div></div><p class="dist small">independent is <b>0</b> rungs from citeval, <b>2</b> from the external ref → <b>sides with citeval</b> (exact).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper supports 5-HT3-dependent vagal signaling from luminal factors, but studies carbohydrates/osmolarity not lipids, involves no CCK1 mechanism, satiety, or human food-intake data.</p></div><div class="card caserow" data-kind="interp-win" data-counted="1"><div class="caseh"><code class="cid">Bp03</code><span class="badge b-accent">interpretive win</span><span class="badge b-neu">depth: fulltext</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“Leptin secreted by adipose tissue is also one of the causes involved in immune disorders in obese individuals (34).”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev4) 17%,transparent);color:var(--sev4);font-weight:750">unsupported-for-the-claim</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-fulltext-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge b-neu">N/A - non-substantiating</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"></div></div><div class="lcell lcell-na"><span class="lnum">—</span><span class="llab">N/A</span><div class="lmk"><span class="mk mk-i" title="independent">I</span></div></div></div><p class="dist small">off-scale N/A — sides with the more skeptical read, which is citeval’s → <b>sides with citeval</b> (skeptical-N/A).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper concerns obesity and female reproduction, with only general mention of obesity-induced inflammation; it does not substantiate leptin causing immune disorders in obese individuals.</p></div><div class="card caserow" data-kind="loss" data-counted="0"><div class="caseh"><code class="cid">Bs07</code><span class="badge b-crit">honest loss</span><span class="badge b-neu">depth: fulltext</span><span class="badge b-neu">C4 self-confidence 1.00</span></div><p class="claimq">“decreased levels of circulating triglycerides and LDL and increased levels of HDL [35].”</p><div class="verds"><div class="verd"><div class="vk">citeval C4</div><span class="badge" style="background:color-mix(in srgb,var(--sev2) 17%,transparent);color:var(--sev2);font-weight:750">partially-supported</span></div><div class="verd"><div class="vk">external ref <span class="prov">llm-fulltext-claude-science</span></div><span class="badge" style="background:color-mix(in srgb,var(--sev5) 17%,transparent);color:var(--sev5);font-weight:750">contradicted</span></div><div class="verd"><div class="vk">blind independent</div><span class="badge" style="background:color-mix(in srgb,var(--sev5) 17%,transparent);color:var(--sev5);font-weight:750">contradicted</span></div></div><div class="ladder"><div class="lcell" style="border-color:var(--sev0)"><span class="lnum">0</span><span class="llab">FS</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev1)"><span class="lnum">1</span><span class="llab">SwO</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev2)"><span class="lnum">2</span><span class="llab">PS</span><div class="lmk"><span class="mk mk-c" title="citeval">C</span></div></div><div class="lcell" style="border-color:var(--sev3)"><span class="lnum">3</span><span class="llab">TTM</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev4)"><span class="lnum">4</span><span class="llab">UFC</span><div class="lmk"></div></div><div class="lcell" style="border-color:var(--sev5)"><span class="lnum">5</span><span class="llab">CON</span><div class="lmk"><span class="mk mk-e" title="external ref">E</span><span class="mk mk-i" title="independent">I</span></div></div></div><p class="dist small">independent is <b>3</b> rungs from citeval, <b>0</b> from the external ref → <b>sides with external</b> (nearest-ordinal).</p><p class="sec-note" style="margin-top:8px"><b>Blind reader’s reasoning:</b> Paper shows HDL decreased (not increased) with treatment, and TG/LDL reductions were non-significant, opposite to the claim of increased HDL.</p></div><div class="card"><h2>What the 4/6 does and doesn’t say</h2><div class="grid3"><div class="tile"><div class="lab">Clean agreements</div><div class="val" style="color:var(--good-ink)">2</div><div class="sub">independent matched citeval’s exact grade: <code>A11</code>, <code>A05</code></div></div><div class="tile"><div class="lab">Interpretive calls</div><div class="val" style="color:var(--accent)">2</div><div class="sub">nearest-ordinal / skeptical-N/A leaning citeval: <code>Bs03</code>, <code>Bp03</code></div></div><div class="tile"><div class="lab">Honest losses</div><div class="val" style="color:var(--critical)">2</div><div class="sub">independent sided away from citeval: <code>Ce03</code>, <code>Bs07</code></div></div></div><p class="small" style="margin-top:14px">Restrict to exact agreement and only three cases resolve — <code>A11</code> and <code>A05</code> match citeval, <code>Bs07</code> matches the external ref — a <b>2–1</b> citeval lead, not a wash. The point of a held-out tiebreak isn’t a perfect score — it’s that an independent reader, blind to both sides, agrees with citeval more often than not, and that the two times it doesn’t are printed right here. One of those losses, <code>Bs07</code>, is the same case anchoring <i>contradicted</i> in the <a href="spin_spectrum.html">spin spectrum</a>.</p></div>
+<footer class="foot"><div>Built offline from committed data — no model calls, no API key. Regenerate with <code>python docs/build_artifacts/build_all.py</code>. Figures trace to the committed calibration corpus, the frozen grade vocabulary, and the git history each page cites.</div><div class="xlinks"><a href="index.html"><b>Overview</b> — The discipline, made visible</a><a href="climbdown.html"><b>1 · Climb-down</b> — It caught its own propped metric on held-out data</a><a href="spin_spectrum.html"><b>2 · Spin spectrum</b> — A 6-level ordinal the field&#x27;s benchmarks don&#x27;t have</a><a href="debate_replay.html"><b>4 · Debate replay</b> — The adversarial triad, replayed from the frozen transcript</a></div></footer>
+</main>
+
+<script>
+(function(){try{var t=localStorage.getItem('citeval-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+function __toggleTheme(){var r=document.documentElement;var cur=r.getAttribute('data-theme');
+ var next = cur==='dark' ? 'light' : (cur==='light' ? 'dark' : (matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark'));
+ r.setAttribute('data-theme',next);try{localStorage.setItem('citeval-theme',next);}catch(e){}}
+</script>
+
+<script>
+function setMode(m){
+  document.querySelectorAll('.segbtn').forEach(function(x){x.classList.toggle('on',x.dataset.mode===m);});
+  var conf={
+    full:{n:4,t:'sided with citeval — interpretive calls resolved',
+      s:'2 clean agreements + 2 interpretive calls · 2 honest losses shown below',keep:['clean-win','interp-win']},
+    strict:{n:2,t:'exact agreement with citeval only',
+      s:'the strict floor: of the 3 cases where the blind read exactly matches a reference (A11, A05 → citeval; Bs07 → external), citeval leads 2–1',keep:['clean-win']},
+    loss:{n:2,t:'the independent read sided away from citeval',
+      s:'the two honest losses — printed, not hidden',keep:['loss']}
+  }[m];
+  document.getElementById('tallyN').textContent=conf.n;
+  document.getElementById('tallyTitle').textContent=conf.t;
+  document.getElementById('tallySub').textContent=conf.s;
+  document.querySelectorAll('.caserow').forEach(function(r){
+    r.classList.toggle('dim',conf.keep.indexOf(r.dataset.kind)<0);
+  });
+}
+</script>
+
+</body>
+</html>
