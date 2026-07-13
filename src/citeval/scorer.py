@@ -5,8 +5,10 @@ detection, species/population scope detection, and specificity on controls. This
 proof-of-correctness artifact — measured, not asserted.
 
 The graded `substantive_support` axis (RB3) is scored when the graded C4 is run (`--graded`,
-needs a key) AND a **human** graded reference label is supplied per case (the anti-circularity
-guard — the reference is NEVER model-generated). The reference arrives as a `substantive_grade`
+needs a key) AND an **independent** graded reference label is supplied per case (the
+anti-circularity guard — the reference is independent of the grader, NEVER the grader's own output;
+today an independent AI reviewer [Claude Science read + blind decider correction], not yet
+human-certified). The reference arrives as a `substantive_grade`
 sidecar: either a per-case field or a `--graded-reference` file keyed by `case_id`. Until
 references exist, the calibration block reports "pending reference labels"; offline (stub, no
 key) it stays PENDING and the objective scorecard is unchanged (16/17).
@@ -75,6 +77,10 @@ def code_version() -> str:
             return "unknown"
         return sha + ("+dirty" if _git("status", "--porcelain") else "")
     except Exception:
+        # Swallows a HARD failure of the git subprocess (git not installed -> FileNotFoundError, the
+        # 5s timeout -> TimeoutExpired, an OSError launching it). A clean non-repo already returns ''
+        # and exits via the `if not sha` guard above. The version stamp is best-effort observability,
+        # never a reason to abort a scoring run, so it degrades to "unknown".
         return "unknown"
 
 
@@ -309,8 +315,9 @@ def confidence_spread(confs) -> dict:
 def calibrate_graded(records) -> dict:
     """Compute the RB3 graded-axis calibration block from joined prediction+reference records.
 
-    `records` = [{case_id, grade, confidence, status, ref_grade}, ...]. Only records with a
-    human `ref_grade` (a real ordinal grade) are labeled; among those, GRADED rows feed the
+    `records` = [{case_id, grade, confidence, status, ref_grade}, ...]. Only records with an
+    independent `ref_grade` (a real ordinal grade from the reference) are labeled; among those,
+    GRADED rows feed the
     metrics and ABSTAINED / NON_SUBSTANTIATING rows reduce coverage. Returns
     {"status": "pending"} when there are no reference labels yet."""
     labeled = [r for r in records if r.get("ref_grade") in ORDINAL_INDEX]
@@ -352,22 +359,92 @@ def calibrate_graded(records) -> dict:
 
 
 # ==================================================================================
-# Human graded-reference sidecar (anti-circularity: NEVER model-generated)
+# Independent graded-reference sidecar (anti-circularity: independent of the grader — NEVER the
+# grader's own output). The reference is a SEPARATE process/instance from the adversarial Opus-4.8
+# grader; today an independent AI reviewer (a Claude "decider" instance — Claude Science full-text/
+# abstract read + a blind decider-adjudicated correction pass), NOT yet human-certified. The
+# anti-circularity property is process/instance independence, NOT human ground truth.
 # ==================================================================================
-def load_graded_references(cases: list[dict], sidecar_path: str | None = None) -> dict:
+class ReferenceGrades(dict):
+    """A `{case_id -> ordinal reference grade}` mapping that ALSO carries the reference's
+    `grade_provenance` breakdown on `.provenance` (`{provenance_label: count}`).
+
+    Reading the provenance FROM the artifact — rather than hardcoding a claim in the scorecard — is
+    invariant #1 (metadata overrides model) turned on the scorer's OWN output: the "independent AI
+    reviewer" label the scorecard prints is measured from the reference, not asserted. Behaves as a
+    plain `dict` everywhere else; `.provenance` is `{}` when the source recorded none (e.g. a
+    hand-authored sidecar) or when a plain dict was passed instead of this type."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.provenance: dict[str, int] = {}
+
+
+def _note_provenance(acc: dict[str, str | None], cid, label) -> None:
+    """Record the winning source's `grade_provenance` for `cid` (None when unlabeled). Last write
+    wins, mirroring the grade itself (a sidecar row overrides the per-case field)."""
+    acc[cid] = label if (isinstance(label, str) and label.strip()) else None
+
+
+def _tally_provenance(prov_by_cid: dict[str, str | None]) -> dict[str, int]:
+    """Count reference rows by their `grade_provenance` label (unlabeled rows skipped)."""
+    out: dict[str, int] = {}
+    for label in prov_by_cid.values():
+        if label:
+            out[label] = out.get(label, 0) + 1
+    return out
+
+
+# Short, human-readable gloss for known reference-provenance labels; an UNKNOWN label prints
+# verbatim so the breakdown always reflects exactly what the artifact recorded (metadata-grounded,
+# never a hardcoded claim).
+_PROVENANCE_GLOSS = {
+    "llm-fulltext-claude-science": "independent-AI full-text read (Claude Science)",
+    "llm-abstract-only-claude-science": "independent-AI abstract-only read (Claude Science)",
+    "decider-adjudicated (blind Claude-Science full-text re-read)":
+        "decider-adjudicated (blind full-text re-read)",
+    "decider-adjudicated": "decider-adjudicated",
+}
+
+
+def _format_reference_provenance(prov: dict[str, int]) -> str:
+    """One-line 'reference basis: <breakdown>' from the reference's `grade_provenance` counts (item
+    2 / SD-06). States what the reference ACTUALLY is — an independent AI reviewer, independent of
+    the grader, not yet human-certified — read from the artifact rather than asserted."""
+    if not prov:
+        return ""
+    parts = [f"{n} × {_PROVENANCE_GLOSS.get(label, label)}"
+             for label, n in sorted(prov.items(), key=lambda kv: (-kv[1], kv[0]))]
+    total = sum(prov.values())
+    return (f"Reference basis (N={total}, read from `grade_provenance`): " + "; ".join(parts)
+            + " — an independent AI reviewer, independent of the grader (never the grader's own "
+              "output); not yet human-certified.")
+
+
+def load_graded_references(cases: list[dict], sidecar_path: str | None = None) -> "ReferenceGrades":
     """Reference grades keyed by case_id, from a per-case `substantive_grade` field and/or a
     sidecar file (jsonl or json keyed by case_id, field `substantive_grade`). Only values on the
-    RB1 ordinal are accepted; the scorer never fabricates a reference.
+    RB1 ordinal are accepted; the scorer never fabricates a reference. Returns a `ReferenceGrades`
+    whose `.provenance` tallies the reference rows' `grade_provenance` (item 2).
 
     ANTI-CIRCULARITY: the reference field is ONLY `substantive_grade` — deliberately NOT the bare
     `grade` key the scorer stores its own MODEL predictions under (`graded_records[*].grade`). The
     key-name distinction is the structural barrier that stops the tool's own output from being
-    re-ingested as a human reference (CLAUDE.md: enforce structurally, not by convention)."""
-    refs: dict[str, str] = {}
+    re-ingested as its own reference (CLAUDE.md: enforce structurally, not by convention). The
+    reference is independent of the grader — today an independent AI reviewer, not yet
+    human-certified: process independence, not human ground truth."""
+    refs = ReferenceGrades()
+    prov_by_cid: dict[str, str | None] = {}
+    # `.provenance` describes the reference's COMPOSITION: every row presenting a `substantive_grade`
+    # (incl. NEI / non-substantiating reads that carry no ordinal grade) is counted, so the printed
+    # breakdown matches the reference row-for-row. Only ordinal grades enter `refs` (numbers unchanged).
     for c in cases:
         g = c.get("substantive_grade")
-        if isinstance(g, str) and g in ORDINAL_INDEX:
-            refs[c.get("case_id", c.get("cited_pmid"))] = g
+        if not isinstance(g, str):
+            continue
+        cid = c.get("case_id", c.get("cited_pmid"))
+        _note_provenance(prov_by_cid, cid, c.get("grade_provenance"))
+        if g in ORDINAL_INDEX:
+            refs[cid] = g
     if sidecar_path:
         p = Path(sidecar_path)
         rows: list[dict]
@@ -379,8 +456,12 @@ def load_graded_references(cases: list[dict], sidecar_path: str | None = None) -
         for row in rows:
             cid = row.get("case_id")
             g = row.get("substantive_grade")
-            if cid and isinstance(g, str) and g in ORDINAL_INDEX:
+            if not (cid and isinstance(g, str)):
+                continue
+            _note_provenance(prov_by_cid, cid, row.get("grade_provenance"))
+            if g in ORDINAL_INDEX:
                 refs[cid] = g
+    refs.provenance = _tally_provenance(prov_by_cid)
     return refs
 
 
@@ -456,7 +537,7 @@ def coverage_by_depth(records: list[dict]) -> dict:
     """Graded/abstained/non-substantiating split by evidence depth (WO-C4 §D item 12).
 
     Answers 'did full text raise coverage?' — computed over ALL graded predictions (no reference
-    labels required), so it is visible even before human grades exist."""
+    labels required), so it is visible even before any reference grades exist."""
     out: dict[str, dict] = {}
     for depth in ("fulltext", "abstract"):
         sub = [r for r in records if r.get("evidence_depth") == depth]
@@ -787,18 +868,25 @@ def score(cases: list[dict], graded: bool = False, references: dict | None = Non
              + (" (PARTIAL subset — not the canonical full-corpus results)" if partial
                 else " (offline-scoring input)"))
 
-    return aggregate_metrics(rows, graded_records, errors, graded=graded, version=version)
+    res = aggregate_metrics(rows, graded_records, errors, graded=graded, version=version)
+    # Surface the reference's TRUE provenance in the scorecard (item 2): display-only, never a metric.
+    prov = getattr(references, "provenance", None)
+    if prov:
+        res["reference_provenance"] = prov
+    return res
 
 
 # ==================================================================================
 # OFFLINE scoring (req #2) — recompute the ENTIRE scorecard from a durable results file.
 # PURE: no pipeline, no NCBI, no ANTHROPIC_API_KEY, no network. Deterministic, <1s.
 # ==================================================================================
-def load_reference_grades(path: str | Path) -> dict[str, str]:
+def load_reference_grades(path: str | Path) -> "ReferenceGrades":
     """case_id -> ordinal reference grade, from a `--graded-reference` sidecar (jsonl or json).
     Schema-tolerant on the grade column (`substantive_grade` / `grade` / `ref_grade` / …) — see
     `recalibrate._REF_GRADE_KEYS`. Only grades on the RB1 ordinal are kept; the scorer never
-    fabricates a reference (anti-circularity: this file is the HUMAN/decider truth)."""
+    fabricates a reference (anti-circularity: this file is the independent, decider-audited
+    reference — independent of the grader, not the grader's own output). Returns a `ReferenceGrades`
+    whose `.provenance` tallies the reference rows' `grade_provenance` (item 2)."""
     from .recalibrate import _REF_GRADE_KEYS
     p = Path(path)
     if p.suffix == ".jsonl":
@@ -806,12 +894,21 @@ def load_reference_grades(path: str | Path) -> dict[str, str]:
     else:
         raw = json.loads(p.read_text())
         rows = raw if isinstance(raw, list) else raw.get("cases", raw.get("rows", []))
-    refs: dict[str, str] = {}
+    refs = ReferenceGrades()
+    prov_by_cid: dict[str, str | None] = {}
     for r in rows:
         cid = r.get("case_id")
         grade = next((r[k] for k in _REF_GRADE_KEYS if r.get(k)), None)
-        if cid and isinstance(grade, str) and grade in ORDINAL_INDEX:
+        if not (cid and isinstance(grade, str)):
+            continue
+        # `.provenance` describes the reference artifact's COMPOSITION — every reference row,
+        # including the NEI / non-substantiating rows that carry an independent read but no ordinal
+        # grade — so the printed breakdown matches the reference file row-for-row. Only ordinal
+        # grades feed the scored metrics, so `refs` itself keeps just those (numbers unchanged).
+        _note_provenance(prov_by_cid, cid, r.get("grade_provenance"))
+        if grade in ORDINAL_INDEX:
             refs[cid] = grade
+    refs.provenance = _tally_provenance(prov_by_cid)
     return refs
 
 
@@ -885,6 +982,11 @@ def score_from_predictions(results_rows: list[dict], references: dict[str, str] 
     effective_refs = {gr["case_id"]: gr["ref_grade"] for gr in graded_records
                       if gr.get("ref_grade") in ORDINAL_INDEX}
     res["recal"] = compute_recal_block(graded_records, effective_refs)
+    # Surface the reference's TRUE provenance in the scorecard (item 2): a display-only breakdown
+    # read off `ReferenceGrades.provenance` (empty when a plain dict was passed). Never a metric.
+    prov = getattr(references, "provenance", None)
+    if prov:
+        res["reference_provenance"] = prov
     return res
 
 
@@ -897,9 +999,9 @@ def render_calibration(cal: dict) -> list[str]:
     L = ["## Substantive-support calibration (graded axis, RB3)", ""]
     if cal.get("status") == "pending":
         L += [f"- **Graded-axis calibration:** pending reference labels — {cal.get('n_records', 0)} "
-              "graded prediction(s) produced, but no HUMAN `substantive_grade` reference supplied "
-              "yet (anti-circularity: the reference is never model-generated). Provide a "
-              "`--graded-reference` sidecar to score.", ""]
+              "graded prediction(s) produced, but no independent `substantive_grade` reference "
+              "supplied yet (anti-circularity: the reference must be independent of the grader — "
+              "never the grader's own output). Provide a `--graded-reference` sidecar to score.", ""]
         return L
     rc = cal.get("risk_coverage", {})
     cs = cal.get("confidence_spread", {})
@@ -986,7 +1088,7 @@ def render_scorecard(res: dict) -> str:
     if not graded:
         graded_line = "**PENDING** (adversarial adjudicator not run — pass --graded)"
     elif cal.get("status") == "pending":
-        graded_line = "**pending reference labels** (graded predictions produced; no human reference yet)"
+        graded_line = "**pending reference labels** (graded predictions produced; no independent reference yet)"
     else:
         graded_line = f"**SCORED** (coverage {cal.get('coverage', 0):.2f}, see calibration block below)"
     ver = res.get("code_version") or ""
@@ -1010,9 +1112,11 @@ def render_scorecard(res: dict) -> str:
             if res.get("n_errors") else " (no grounding/network failures)"),
          f"- **Graded-axis calibration**: {graded_line}", ""]
     if res["scope"]["missed"]:
-        L += [f"- **Scope misses (C3-lite limitation, motivates Opus C3 / WO-C3):** "
-              f"{', '.join(res['scope']['missed'])} — claim asserts human relevance without an "
-              "explicit lexical marker, so the lexical stub cannot detect it.", ""]
+        L += [f"- **Scope misses (WO-C3 scope axis):** "
+              f"{', '.join(res['scope']['missed'])} — the claim asserts human relevance without an "
+              "explicit marker, so the scope axis leaves it unflagged (precision-first). This static "
+              "note does not distinguish which claim-scope path produced these predictions (Opus-4.8 "
+              "model vs lexical fallback); a live scorer run logs that on the `[C3]` stderr line.", ""]
     if res["a_scope_observational"]:
         L += [f"- _Observational:_ retracted-case(s) also flagged species mismatch "
               f"({', '.join(res['a_scope_observational'])}) — the cited paper is genuinely "
@@ -1028,8 +1132,12 @@ def render_scorecard(res: dict) -> str:
         L.append(f"| {x['case_id']} | {x['gt']} | {'Y' if x['pred_retraction'] else '·'} | "
                  f"{'Y' if x['pred_scope'] else '·'} | {x['overall'][:46]} |")
     L += ["", "_Retraction + scope labels are metadata-grounded; this scorecard measures the "
-          "objective axes. The graded substantive axis is calibrated against a HUMAN "
-          "`substantive_grade` reference (never model-generated) per RB3._"]
+          "objective axes. The graded substantive axis is calibrated against an independent, "
+          "decider-audited `substantive_grade` reference — independent of the grader (never the "
+          "grader's own output); today an independent AI reviewer, not yet human-certified — per RB3._"]
+    prov_line = _format_reference_provenance(res.get("reference_provenance") or {})
+    if prov_line:
+        L += ["", f"_{prov_line}_"]
     return "\n".join(L) + "\n"
 
 
@@ -1087,7 +1195,8 @@ def main() -> None:
     ap.add_argument("--graded", action="store_true",
                     help="run the graded adversarial C4 (needs ANTHROPIC_API_KEY) + calibration")
     ap.add_argument("--graded-reference", dest="graded_reference",
-                    help="human substantive_grade sidecar (jsonl/json keyed by case_id)")
+                    help="independent substantive_grade sidecar (jsonl/json keyed by case_id); the "
+                         "reference must be independent of the grader — never the grader's own output")
     ap.add_argument("--recalibrate", action="store_true",
                     help="apply the fitted RB3 Platt confidence map (opt-in; fails closed if no "
                          "fitted map exists). Or set CITEVAL_RECALIBRATE=1")
