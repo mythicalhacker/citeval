@@ -1,0 +1,1805 @@
+{
+  "schema": "citeval.debate_transcript.v1",
+  "generated_by": "W0-CONTRACTS scratchpad/gen_transcript.py from outputs/debug/{A27,Ce11}",
+  "note": "Viz-ready adversarial-debate transcripts for two REAL calibration cases, committed so W2-FE-LIVERUN, W1-INNOVATION-ARTIFACTS and W1-CORE-TESTS never touch the gitignored outputs/debug/. A27 = a RETRACTED paper cited for a mechanism over-reach (unanimous supported-with-overreach, early-stopped at 4 rounds). Ce11 = an obesity–allergy over-reach whose vote is an adjacent-only split across 7 rounds. Each case carries per-round supporter/refuter/critic text (+ raw), the evolving critic grade and running agreement, per-round critic usage, a compact SSE `debate_events` log to play in the theater, and a `replay` block giving the reproducible current-code aggregation outcome. Raw per-round dumps are also committed under transcripts/A27/ and transcripts/Ce11/.",
+  "cases": {
+    "A27": {
+      "case_id": "A27",
+      "claim": "Similarly, a previous study provided strong evidence that miR-214 could promote fibroblast differentiation of adipose-derived MSCs by restoring elastin expression to improve PFD in rats with birth trauma [31].",
+      "citing_source": {
+        "pmid": "33460398",
+        "pmcid": "PMC7880387",
+        "doi": "10.18632/aging.202465"
+      },
+      "cited": {
+        "pmid": "28772265",
+        "doi": "10.1159/000479570",
+        "title": "MicroRNA-214 Affects Fibroblast Differentiation of Adipose-Derived Mesenchymal Stem Cells by Targeting Mitofusin-2 during Pelvic Floor Dysfunction in SD Rats with Birth Trauma.",
+        "journal": "Cellular Physiology and Biochemistry"
+      },
+      "ground_truth_label": "RETRACTED",
+      "retraction_note": "Retraction Watch RW record 24077 (Paper Mill; Results Not Reproducible) + OpenAlex is_retracted=true — the retraction axis gates `overall` independently of this substantive debate.",
+      "evidence_depth": "abstract",
+      "config": {
+        "model": "claude-opus-4-8",
+        "self_consistency_rounds": 7,
+        "advocate_temperature": 0.9,
+        "critic_temperature": 0.2,
+        "rounds_run": 4,
+        "early_stopped": true,
+        "early_stop_reason": "unanimous ordinal grade past the min-valid floor and a strict majority of N — remaining rounds cannot change the median-aware g*"
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "supporter": {
+            "points": [
+              {
+                "quote": "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+                "rationale": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs and improves PFD in rats with birth trauma, including the 'strong evidence' framing and direction.",
+                "claim_component": "miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD"
+              },
+              {
+                "quote": "Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group but was inhibited in the miR-214 inhibitor and Mfn2 over-expression groups.",
+                "rationale": "Provides experimental evidence for the direction of the effect: miR-214 promotes fibroblast differentiation.",
+                "claim_component": "promote fibroblast differentiation"
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "rationale": "Supports the claim that miR-214 restores/increases elastin expression, since Elastin is listed among the up-regulated proteins in the miR-214 mimic group.",
+                "claim_component": "restoring elastin expression"
+              },
+              {
+                "quote": "This study investigated whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma.",
+                "rationale": "Confirms the study context matches the claim: adipose-derived MSCs, fibroblast differentiation, PFD, and rats with birth trauma.",
+                "claim_component": "context: ADMSCs, PFD, rats with birth trauma"
+              }
+            ],
+            "stance": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs and improves PFD in rats with birth trauma, including the 'strong e…",
+            "raw": "{\"points\": [{\"quote\": \"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"rationale\": \"Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs and improves PFD in rats with birth trauma, including the 'strong evidence' framing and direction.\", \"claim_component\": \"miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD\"}, {\"quote\": \"Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group but was inhibited in the miR-214 inhibitor and Mfn2 over-expression groups.\", \"rationale\": \"Provides experimental evidence for the direction of the effect: miR-214 promotes fibroblast differentiation.\", \"claim_component\": \"promote fibroblast differentiation\"}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"rationale\": \"Supports the claim that miR-214 restores/increases elastin expression, since Elastin is listed among the up-regulated proteins in the miR-214 mimic group.\", \"claim_component\": \"restoring elastin expression\"}, {\"quote\": \"This study investigated whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma.\", \"rationale\": \"Confirms the study context matches the claim: adipose-derived MSCs, fibroblast differentiation, PFD, and rats with birth trauma.\", \"claim_component\": \"context: ADMSCs, PFD, rats with birth trauma\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+                "objection": "The SOURCE's stated mechanism is down-regulation of Mfn2 (its target gene), not 'restoring elastin expression' as the claim asserts. Elastin is only one of several markers increased as a downstream consequence, not the mechanistic route the paper identifies.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "objection": "Elastin is listed as merely one of eight markers whose expression increased; the claim isolates elastin as the mechanism of improvement, cherry-picking a single marker while omitting Mfn2 targeting, which is the actual mechanism.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "mild",
+            "stance": "The SOURCE's stated mechanism is down-regulation of Mfn2 (its target gene), not 'restoring elastin expression' as the claim asserts. Elastin is only one of several markers increas…",
+            "raw": "{\"points\": [{\"quote\": \"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"objection\": \"The SOURCE's stated mechanism is down-regulation of Mfn2 (its target gene), not 'restoring elastin expression' as the claim asserts. Elastin is only one of several markers increased as a downstream consequence, not the mechanistic route the paper identifies.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"objection\": \"Elastin is listed as merely one of eight markers whose expression increased; the claim isolates elastin as the mechanism of improvement, cherry-picking a single marker while omitting Mfn2 targeting, which is the actual mechanism.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"mild\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.8,
+            "reasoning": "The SOURCE's primary finding directly supports the claim's core assertion: miR-214 promotes fibroblast differentiation of ADMSCs and improves PFD in SD rats with birth trauma, with the SOURCE's own words 'provided strong evidence.' Direction (increase/promote) matches. However, the claim mischaracterizes the mechanism: the SOURCE identifies the mechanism as 'down-regulating Mfn2' (the confirmed target gene), whereas the claim states the mechanism is 'restoring elastin expression.' Elastin is only one of eight downstream markers increased in the miR-214 mimic group, not the identified mechanistic route. This is a mechanism mischaracterization — the finding is genuinely present but the claim over-asserts by naming a different mechanism than the SOURCE's actual one (Mfn2 targeting). This fits supported-with-overreach under the literal-truth vs over-reach test.",
+            "decisive_spans": [
+              "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+              "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "Core promoting effect and PFD improvement supported, but claim names 'restoring elastin' as mechanism while SOURCE's actual mechanism is Mfn2 down-regulation.",
+            "raw": "{\"reasoning\": \"The SOURCE's primary finding directly supports the claim's core assertion: miR-214 promotes fibroblast differentiation of ADMSCs and improves PFD in SD rats with birth trauma, with the SOURCE's own words 'provided strong evidence.' Direction (increase/promote) matches. However, the claim mischaracterizes the mechanism: the SOURCE identifies the mechanism as 'down-regulating Mfn2' (the confirmed target gene), whereas the claim states the mechanism is 'restoring elastin expression.' Elastin is only one of eight downstream markers increased in the miR-214 mimic group, not the identified mechanistic route. This is a mechanism mischaracterization — the finding is genuinely present but the claim over-asserts by naming a different mechanism than the SOURCE's actual one (Mfn2 targeting). This fits supported-with-overreach under the literal-truth vs over-reach test.\", \"decisive_spans\": [\"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.8, \"grade_rationale_last\": \"Core promoting effect and PFD improvement supported, but claim names 'restoring elastin' as mechanism while SOURCE's actual mechanism is Mfn2 down-regulation.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.8,
+          "agreement": 1.0,
+          "usage": {
+            "critic_output_tokens": 533,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.039975,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 2,
+          "supporter": {
+            "points": [
+              {
+                "quote": "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+                "rationale": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evidence' certainty language.",
+                "claim_component": "miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD"
+              },
+              {
+                "quote": "Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group",
+                "rationale": "Supports the directional effect that miR-214 promotes fibroblast differentiation.",
+                "claim_component": "promotion of fibroblast differentiation"
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "rationale": "Supports the claim that miR-214 restores/increases elastin expression, as Elastin was among the up-regulated markers in the miR-214 mimic group.",
+                "claim_component": "restoring elastin expression"
+              },
+              {
+                "quote": "whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma",
+                "rationale": "Confirms the study context: fibroblast differentiation of adipose-derived MSCs during PFD in rats with birth trauma, matching the claim's setting.",
+                "claim_component": "context: PFD in rats with birth trauma, adipose-derived MSCs"
+              }
+            ],
+            "stance": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evi…",
+            "raw": "{\"points\": [{\"quote\": \"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"rationale\": \"Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evidence' certainty language.\", \"claim_component\": \"miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD\"}, {\"quote\": \"Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group\", \"rationale\": \"Supports the directional effect that miR-214 promotes fibroblast differentiation.\", \"claim_component\": \"promotion of fibroblast differentiation\"}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-\\u03b3 or Runx2 was increased in the miR-214 mimic group\", \"rationale\": \"Supports the claim that miR-214 restores/increases elastin expression, as Elastin was among the up-regulated markers in the miR-214 mimic group.\", \"claim_component\": \"restoring elastin expression\"}, {\"quote\": \"whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma\", \"rationale\": \"Confirms the study context: fibroblast differentiation of adipose-derived MSCs during PFD in rats with birth trauma, matching the claim's setting.\", \"claim_component\": \"context: PFD in rats with birth trauma, adipose-derived MSCs\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+                "objection": "The SOURCE's stated mechanism is down-regulation of Mfn2, not 'restoring elastin expression' as the claim asserts. The claim substitutes elastin restoration for the actual targeted mechanism (Mfn2).",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "objection": "Elastin is only one of many downstream markers increased, listed among eight; the SOURCE does not single out elastin restoration as the mechanism by which PFD improves. The claim isolates elastin as the causal route, which overstates its specific role.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "mild",
+            "stance": "The SOURCE's stated mechanism is down-regulation of Mfn2, not 'restoring elastin expression' as the claim asserts. The claim substitutes elastin restoration for the actual targete…",
+            "raw": "{\"points\": [{\"quote\": \"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"objection\": \"The SOURCE's stated mechanism is down-regulation of Mfn2, not 'restoring elastin expression' as the claim asserts. The claim substitutes elastin restoration for the actual targeted mechanism (Mfn2).\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"objection\": \"Elastin is only one of many downstream markers increased, listed among eight; the SOURCE does not single out elastin restoration as the mechanism by which PFD improves. The claim isolates elastin as the causal route, which overstates its specific role.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"mild\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.8,
+            "reasoning": "The SOURCE's primary finding directly supports the direction: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in rats with birth trauma, with 'strong evidence' language matching the claim. However, the claim names the mechanism as 'restoring elastin expression,' whereas the SOURCE's actual stated mechanism is 'down-regulating Mfn2.' Elastin is only one of eight downstream markers increased in the miR-214 mimic group and is not singled out as the causal route. The claim thus mischaracterizes the mechanism — substituting elastin restoration for the SOURCE's actual Mfn2-targeting mechanism. The finding (elastin increase) IS present, but the claim over-asserts it as the mechanism. This is over-reach on the mechanism element, not a contradiction (direction still supported).",
+            "decisive_spans": [
+              "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+              "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "Direction and PFD-improvement supported, but claim mischaracterizes mechanism as elastin restoration when SOURCE's actual mechanism is Mfn2 down-regulation.",
+            "raw": "{\"reasoning\": \"The SOURCE's primary finding directly supports the direction: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in rats with birth trauma, with 'strong evidence' language matching the claim. However, the claim names the mechanism as 'restoring elastin expression,' whereas the SOURCE's actual stated mechanism is 'down-regulating Mfn2.' Elastin is only one of eight downstream markers increased in the miR-214 mimic group and is not singled out as the causal route. The claim thus mischaracterizes the mechanism — substituting elastin restoration for the SOURCE's actual Mfn2-targeting mechanism. The finding (elastin increase) IS present, but the claim over-asserts it as the mechanism. This is over-reach on the mechanism element, not a contradiction (direction still supported).\", \"decisive_spans\": [\"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.8, \"grade_rationale_last\": \"Direction and PFD-improvement supported, but claim mischaracterizes mechanism as elastin restoration when SOURCE's actual mechanism is Mfn2 down-regulation.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.8,
+          "agreement": 1.0,
+          "usage": {
+            "critic_output_tokens": 572,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.0429,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 3,
+          "supporter": {
+            "points": [
+              {
+                "quote": "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+                "rationale": "Directly matches the claim's asserted effect (miR-214 promotes fibroblast differentiation of adipose-derived MSCs), direction, certainty ('strong evidence'), and outcome (improve PFD in rats with birth trauma).",
+                "claim_component": "miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in rats with birth trauma"
+              },
+              {
+                "quote": "Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group",
+                "rationale": "Substantiates the directional effect that miR-214 promotes fibroblast differentiation of adipose-derived MSCs.",
+                "claim_component": "miR-214 promotes fibroblast differentiation"
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "rationale": "Supports the claim that miR-214 restores/increases elastin expression, since Elastin was among the up-regulated markers with miR-214 mimic.",
+                "claim_component": "restoring elastin expression"
+              },
+              {
+                "quote": "MicroRNA-214 Affects Fibroblast Differentiation of Adipose-Derived Mesenchymal Stem Cells by Targeting Mitofusin-2 during Pelvic Floor Dysfunction in SD Rats with Birth Trauma.",
+                "rationale": "Title confirms the study context: fibroblast differentiation of adipose-derived MSCs during PFD in rats with birth trauma, matching the claim's setting.",
+                "claim_component": "context of adipose-derived MSCs and PFD in rats with birth trauma"
+              }
+            ],
+            "stance": "Directly matches the claim's asserted effect (miR-214 promotes fibroblast differentiation of adipose-derived MSCs), direction, certainty ('strong evidence'), and outcome (improve …",
+            "raw": "{\"points\": [{\"quote\": \"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"rationale\": \"Directly matches the claim's asserted effect (miR-214 promotes fibroblast differentiation of adipose-derived MSCs), direction, certainty ('strong evidence'), and outcome (improve PFD in rats with birth trauma).\", \"claim_component\": \"miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in rats with birth trauma\"}, {\"quote\": \"Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group\", \"rationale\": \"Substantiates the directional effect that miR-214 promotes fibroblast differentiation of adipose-derived MSCs.\", \"claim_component\": \"miR-214 promotes fibroblast differentiation\"}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"rationale\": \"Supports the claim that miR-214 restores/increases elastin expression, since Elastin was among the up-regulated markers with miR-214 mimic.\", \"claim_component\": \"restoring elastin expression\"}, {\"quote\": \"MicroRNA-214 Affects Fibroblast Differentiation of Adipose-Derived Mesenchymal Stem Cells by Targeting Mitofusin-2 during Pelvic Floor Dysfunction in SD Rats with Birth Trauma.\", \"rationale\": \"Title confirms the study context: fibroblast differentiation of adipose-derived MSCs during PFD in rats with birth trauma, matching the claim's setting.\", \"claim_component\": \"context of adipose-derived MSCs and PFD in rats with birth trauma\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+                "objection": "The SOURCE attributes the improvement in PFD to down-regulation of Mfn2, not to 'restoring elastin expression' as the claim states. The claim substitutes a different mechanism for the one the SOURCE actually identifies.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "objection": "Elastin is only one of many markers increased and is not singled out as the causal mechanism; the claim's framing that miR-214 works 'by restoring elastin expression' cherry-picks one marker and elevates it to the central mechanistic pathway.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "mild",
+            "stance": "The SOURCE attributes the improvement in PFD to down-regulation of Mfn2, not to 'restoring elastin expression' as the claim states. The claim substitutes a different mechanism for…",
+            "raw": "{\"points\": [{\"quote\": \"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"objection\": \"The SOURCE attributes the improvement in PFD to down-regulation of Mfn2, not to 'restoring elastin expression' as the claim states. The claim substitutes a different mechanism for the one the SOURCE actually identifies.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"objection\": \"Elastin is only one of many markers increased and is not singled out as the causal mechanism; the claim's framing that miR-214 works 'by restoring elastin expression' cherry-picks one marker and elevates it to the central mechanistic pathway.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"mild\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.82,
+            "reasoning": "The SOURCE's primary finding supports the claim's core relationship: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in SD rats with birth trauma, stated with matching certainty ('strong evidence'). The direction matches (increase). However, the SOURCE identifies the mechanism as 'down-regulating Mfn2,' while the claim substitutes 'restoring elastin expression' as the mechanism. Elastin is indeed increased in the miR-214 mimic group, but it is only one of eight markers listed and is NOT singled out as the causal mechanism. The claim mischaracterizes the mechanism — naming a different one (elastin) than the SOURCE's actual target (Mfn2). The finding is present, but one element (mechanism) over-asserts/mischaracterizes. This fires the literal-truth vs over-reach test.",
+            "decisive_spans": [
+              "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+              "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "Core effect/direction/certainty supported, but claim mischaracterizes the mechanism as 'restoring elastin' vs. the SOURCE's actual Mfn2 down-regulation.",
+            "raw": "{\"reasoning\": \"The SOURCE's primary finding supports the claim's core relationship: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in SD rats with birth trauma, stated with matching certainty ('strong evidence'). The direction matches (increase). However, the SOURCE identifies the mechanism as 'down-regulating Mfn2,' while the claim substitutes 'restoring elastin expression' as the mechanism. Elastin is indeed increased in the miR-214 mimic group, but it is only one of eight markers listed and is NOT singled out as the causal mechanism. The claim mischaracterizes the mechanism — naming a different one (elastin) than the SOURCE's actual target (Mfn2). The finding is present, but one element (mechanism) over-asserts/mischaracterizes. This fires the literal-truth vs over-reach test.\", \"decisive_spans\": [\"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.82, \"grade_rationale_last\": \"Core effect/direction/certainty supported, but claim mischaracterizes the mechanism as 'restoring elastin' vs. the SOURCE's actual Mfn2 down-regulation.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.82,
+          "agreement": 1.0,
+          "usage": {
+            "critic_output_tokens": 603,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.045225,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 4,
+          "supporter": {
+            "points": [
+              {
+                "quote": "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+                "rationale": "Directly substantiates the claim's core assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evidence' certainty framing.",
+                "claim_component": "miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD"
+              },
+              {
+                "quote": "Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group but was inhibited in the miR-214 inhibitor and Mfn2 over-expression groups.",
+                "rationale": "Provides the experimental basis (gain- and loss-of-function) for the directional claim that miR-214 promotes fibroblast differentiation.",
+                "claim_component": "direction: miR-214 promotes fibroblast differentiation"
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "rationale": "Supports the claim that miR-214 restores/increases elastin expression, as elastin is listed among the markers upregulated by miR-214.",
+                "claim_component": "restoring elastin expression"
+              },
+              {
+                "quote": "whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma",
+                "rationale": "Confirms the study setting matches the claim: fibroblast differentiation of ADMSCs in PFD in rats with birth trauma.",
+                "claim_component": "context: PFD in rats with birth trauma"
+              }
+            ],
+            "stance": "Directly substantiates the claim's core assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the …",
+            "raw": "{\"points\": [{\"quote\": \"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"rationale\": \"Directly substantiates the claim's core assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evidence' certainty framing.\", \"claim_component\": \"miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD\"}, {\"quote\": \"Fibroblast differentiation of ADMSCs was promoted in the miR-214 mimic group but was inhibited in the miR-214 inhibitor and Mfn2 over-expression groups.\", \"rationale\": \"Provides the experimental basis (gain- and loss-of-function) for the directional claim that miR-214 promotes fibroblast differentiation.\", \"claim_component\": \"direction: miR-214 promotes fibroblast differentiation\"}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"rationale\": \"Supports the claim that miR-214 restores/increases elastin expression, as elastin is listed among the markers upregulated by miR-214.\", \"claim_component\": \"restoring elastin expression\"}, {\"quote\": \"whether microRNA-214 (miR-214) targets mitofusin-2 (Mfn2) in the process of fibroblast differentiation of adipose-derived mesenchymal stem cells (ADMSCs) during pelvic floor dysfunction (PFD) in Sprague Dawley (SD) rats with birth trauma\", \"rationale\": \"Confirms the study setting matches the claim: fibroblast differentiation of ADMSCs in PFD in rats with birth trauma.\", \"claim_component\": \"context: PFD in rats with birth trauma\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma",
+                "objection": "The SOURCE attributes the mechanism to down-regulating Mfn2, not to 'restoring elastin expression' as the claim states. Elastin was one of several markers that increased downstream, not the causal mechanism claimed.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group",
+                "objection": "Elastin is listed as merely one of eight markers that increased; the claim singles out elastin as the operative mechanism ('by restoring elastin expression'), which cherry-picks and misrepresents the source's findings.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "mild",
+            "stance": "The SOURCE attributes the mechanism to down-regulating Mfn2, not to 'restoring elastin expression' as the claim states. Elastin was one of several markers that increased downstrea…",
+            "raw": "{\"points\": [{\"quote\": \"miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma\", \"objection\": \"The SOURCE attributes the mechanism to down-regulating Mfn2, not to 'restoring elastin expression' as the claim states. Elastin was one of several markers that increased downstream, not the causal mechanism claimed.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group\", \"objection\": \"Elastin is listed as merely one of eight markers that increased; the claim singles out elastin as the operative mechanism ('by restoring elastin expression'), which cherry-picks and misrepresents the source's findings.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"mild\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.78,
+            "reasoning": "The SOURCE's primary finding supports the claim's core direction: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in SD rats with birth trauma — matching the claim nearly verbatim ('strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs... to improve PFD in SD rats with birth trauma'). Direction is not opposite, so not contradicted. The finding is on-point. The distinction: the SOURCE attributes the operative MECHANISM to down-regulating Mfn2, whereas the claim substitutes 'by restoring elastin expression' as the mechanism. Elastin was merely one of eight markers upregulated downstream, not the causal mechanism the SOURCE reports. This is a mischaracterized mechanism — the claim names a different mechanism than the SOURCE's actual one (Mfn2 down-regulation), while the finding itself (miR-214 promotes differentiation, elastin increased) is genuinely present. This fits supported-with-overreach: the finding is present but one element (the named mechanism) is mischaracterized.",
+            "decisive_spans": [
+              "The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.",
+              "the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-γ or Runx2 was increased in the miR-214 mimic group"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "Core direction supported, but claim mischaracterizes the mechanism as 'restoring elastin' when the SOURCE attributes it to Mfn2 down-regulation.",
+            "raw": "{\"reasoning\": \"The SOURCE's primary finding supports the claim's core direction: miR-214 promotes fibroblast differentiation of ADMSCs to improve PFD in SD rats with birth trauma — matching the claim nearly verbatim ('strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs... to improve PFD in SD rats with birth trauma'). Direction is not opposite, so not contradicted. The finding is on-point. The distinction: the SOURCE attributes the operative MECHANISM to down-regulating Mfn2, whereas the claim substitutes 'by restoring elastin expression' as the mechanism. Elastin was merely one of eight markers upregulated downstream, not the causal mechanism the SOURCE reports. This is a mischaracterized mechanism — the claim names a different mechanism than the SOURCE's actual one (Mfn2 down-regulation), while the finding itself (miR-214 promotes differentiation, elastin increased) is genuinely present. This fits supported-with-overreach: the finding is present but one element (the named mechanism) is mischaracterized.\", \"decisive_spans\": [\"The study provided strong evidence that miR-214 could promote fibroblast differentiation of ADMSCs by down-regulating Mfn2 to improve PFD in SD rats with birth trauma.\", \"the expression of FSP1, Collagen I, Collagen III, Elastin, LOX, Fibulin-5, PPAR-\\u03b3 or Runx2 was increased in the miR-214 mimic group\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.78, \"grade_rationale_last\": \"Core direction supported, but claim mischaracterizes the mechanism as 'restoring elastin' when the SOURCE attributes it to Mfn2 down-regulation.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.78,
+          "agreement": 1.0,
+          "usage": {
+            "critic_output_tokens": 638,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.04785,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        }
+      ],
+      "debate_events": [
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 0,
+            "ts": 1752451203.65,
+            "elapsed_ms": 3650,
+            "role": "supporter",
+            "round": 1,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 1,
+            "ts": 1752451203.65,
+            "elapsed_ms": 6650,
+            "role": "refuter",
+            "round": 1,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 2,
+            "ts": 1752451203.65,
+            "elapsed_ms": 9650,
+            "role": "critic",
+            "round": 1,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 533,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 3,
+            "ts": 1752451212.65,
+            "elapsed_ms": 12650,
+            "round": 1,
+            "supporter_stance": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs and improves PFD in rats with birth trauma, including the 'strong e…",
+            "refuter_stance": "The SOURCE's stated mechanism is down-regulation of Mfn2 (its target gene), not 'restoring elastin expression' as the claim asserts. Elastin is only one of several markers increas…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 1.0
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 4,
+            "ts": 1752451215.65,
+            "elapsed_ms": 15650,
+            "role": "supporter",
+            "round": 2,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 5,
+            "ts": 1752451215.65,
+            "elapsed_ms": 18650,
+            "role": "refuter",
+            "round": 2,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 6,
+            "ts": 1752451215.65,
+            "elapsed_ms": 21650,
+            "role": "critic",
+            "round": 2,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 572,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 7,
+            "ts": 1752451224.65,
+            "elapsed_ms": 24650,
+            "round": 2,
+            "supporter_stance": "Directly matches the claim's assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the 'strong evi…",
+            "refuter_stance": "The SOURCE's stated mechanism is down-regulation of Mfn2, not 'restoring elastin expression' as the claim asserts. The claim substitutes elastin restoration for the actual targete…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 1.0
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 8,
+            "ts": 1752451227.65,
+            "elapsed_ms": 27650,
+            "role": "supporter",
+            "round": 3,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 9,
+            "ts": 1752451227.65,
+            "elapsed_ms": 30650,
+            "role": "refuter",
+            "round": 3,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 10,
+            "ts": 1752451227.65,
+            "elapsed_ms": 33650,
+            "role": "critic",
+            "round": 3,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 603,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 11,
+            "ts": 1752451236.65,
+            "elapsed_ms": 36650,
+            "round": 3,
+            "supporter_stance": "Directly matches the claim's asserted effect (miR-214 promotes fibroblast differentiation of adipose-derived MSCs), direction, certainty ('strong evidence'), and outcome (improve …",
+            "refuter_stance": "The SOURCE attributes the improvement in PFD to down-regulation of Mfn2, not to 'restoring elastin expression' as the claim states. The claim substitutes a different mechanism for…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 1.0
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 12,
+            "ts": 1752451239.65,
+            "elapsed_ms": 39650,
+            "role": "supporter",
+            "round": 4,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 13,
+            "ts": 1752451239.65,
+            "elapsed_ms": 42650,
+            "role": "refuter",
+            "round": 4,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 14,
+            "ts": 1752451239.65,
+            "elapsed_ms": 45650,
+            "role": "critic",
+            "round": 4,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 638,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_A27",
+            "seq": 15,
+            "ts": 1752451248.65,
+            "elapsed_ms": 48650,
+            "round": 4,
+            "supporter_stance": "Directly substantiates the claim's core assertion that miR-214 promotes fibroblast differentiation of adipose-derived MSCs to improve PFD in rats with birth trauma, including the …",
+            "refuter_stance": "The SOURCE attributes the mechanism to down-regulating Mfn2, not to 'restoring elastin expression' as the claim states. Elastin was one of several markers that increased downstrea…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 1.0
+          }
+        }
+      ],
+      "replay": {
+        "outcome": "GRADED",
+        "verdict": "supported-with-overreach",
+        "a_exact": 1.0,
+        "a_adj": 1.0,
+        "n_valid": 4,
+        "ordinal_distribution": {
+          "supported-with-overreach": 4
+        },
+        "tier": "high",
+        "code": "current HEAD aggregation (_aggregate_rounds + _decide_outcome)",
+        "note": "Reproducible: replay these committed per-round critic grades through the current citeval aggregation to get exactly this outcome. This is what W1-CORE-TESTS asserts."
+      },
+      "frozen_prediction": {
+        "status": "GRADED",
+        "grade": "supported-with-overreach",
+        "confidence": 1.0,
+        "ref_grade": "supported-with-overreach",
+        "code_version": "f99d21f+dirty",
+        "elapsed_s": 88.65,
+        "note": "Frozen cal30 prediction; reproduced by replaying these rounds through the current aggregation (see `replay`)."
+      }
+    },
+    "Ce11": {
+      "case_id": "Ce11",
+      "claim": "Remarkably, recent epidemiological data exhibit an increased association of obesity and allergy [200,201,202,203].",
+      "citing_source": {
+        "pmid": "26225961",
+        "pmcid": "PMC4581184"
+      },
+      "cited": {
+        "pmid": "19725894",
+        "doi": "10.1111/j.1399-3038.2009.00926.x",
+        "title": "Relationship between infant weight gain and later asthma.",
+        "journal": "Pediatric Allergy and Immunology"
+      },
+      "ground_truth_label": "SUPPORTED",
+      "retraction_note": "",
+      "evidence_depth": "fulltext",
+      "config": {
+        "model": "claude-opus-4-8",
+        "self_consistency_rounds": 7,
+        "advocate_temperature": 0.9,
+        "critic_temperature": 0.2,
+        "rounds_run": 7,
+        "early_stopped": false,
+        "early_stop_reason": null
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "supporter": {
+            "points": [
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly asserts a positive association between elevated body weight (higher BMI) and asthma, an allergic/atopic condition, supporting the claimed obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Supports an association between excess weight (overweight) and greater asthma morbidity, reinforcing the obesity-allergy link.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74",
+                "rationale": "Explicitly links becoming overweight or obese with increased risk of developing asthma symptoms, directly supporting an obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.",
+                "rationale": "Presents this study's own epidemiological finding linking weight gain to asthma outcomes, consistent with an association between weight/obesity and allergic disease.",
+                "claim_component": "recent epidemiological data exhibit an increased association"
+              },
+              {
+                "quote": "Like obesity, the prevalence of asthma has increased over the past several decades.",
+                "rationale": "Establishes the parallel rise of obesity and asthma, the epidemiological backdrop for a claimed increasing association between obesity and allergy.",
+                "claim_component": "recent epidemiological data"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Confirms the recognized relationship between obesity and asthma symptoms, supporting the asserted obesity-allergy association.",
+                "claim_component": "association of obesity and allergy"
+              }
+            ],
+            "stance": "Directly asserts a positive association between elevated body weight (higher BMI) and asthma, an allergic/atopic condition, supporting the claimed obesity-allergy association.",
+            "raw": "{\"points\": [{\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly asserts a positive association between elevated body weight (higher BMI) and asthma, an allergic/atopic condition, supporting the claimed obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Supports an association between excess weight (overweight) and greater asthma morbidity, reinforcing the obesity-allergy link.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74\", \"rationale\": \"Explicitly links becoming overweight or obese with increased risk of developing asthma symptoms, directly supporting an obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.\", \"rationale\": \"Presents this study's own epidemiological finding linking weight gain to asthma outcomes, consistent with an association between weight/obesity and allergic disease.\", \"claim_component\": \"recent epidemiological data exhibit an increased association\"}, {\"quote\": \"Like obesity, the prevalence of asthma has increased over the past several decades.\", \"rationale\": \"Establishes the parallel rise of obesity and asthma, the epidemiological backdrop for a claimed increasing association between obesity and allergy.\", \"claim_component\": \"recent epidemiological data\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Confirms the recognized relationship between obesity and asthma symptoms, supporting the asserted obesity-allergy association.\", \"claim_component\": \"association of obesity and allergy\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations, but were not associated with asthma symptoms or pulmonary function during the pre-school years for these children at-risk for asthma.",
+                "objection": "The claim concerns obesity and allergy. This source studies infant weight gain pattern and asthma exacerbations, not obesity-allergy association. Asthma exacerbations are not equivalent to allergy, and the study measures weight gain trajectory rather than obesity status.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "those with the slowest pattern of weight gain had a mean of 59.8 (95% CI 44.7–80.1) courses per 100 child years compared with 89.8 (78.0–103.5) for the average weight change group and 91.1 (79.6–104.4) for the children with accelerated weight gain (P=.01)",
+                "objection": "On the actual allergy/atopy measures, the source found the decelerated (leanest) group had the HIGHEST atopy, which runs opposite to the claimed obesity-allergy association.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "with the decelerated group demonstrating the highest degree of atopy",
+                "objection": "Where the source directly touches allergy (atopy/IgE), heavier weight gain was NOT associated with more allergy; the leanest weight-gain group showed the highest atopy, contradicting an increased obesity-allergy association.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The authors explicitly caution the findings are preliminary and underpowered, undercutting use as evidence for a robust epidemiological obesity-allergy association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations, but instead can be used to prompt further studies",
+                "objection": "The cohort is a highly specific group of high-risk wheezing children, and the authors state findings cannot be generalized, contradicting use as broad epidemiological support.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The claim concerns obesity and allergy. This source studies infant weight gain pattern and asthma exacerbations, not obesity-allergy association. Asthma exacerbations are not equi…",
+            "raw": "{\"points\": [{\"quote\": \"We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations, but were not associated with asthma symptoms or pulmonary function during the pre-school years for these children at-risk for asthma.\", \"objection\": \"The claim concerns obesity and allergy. This source studies infant weight gain pattern and asthma exacerbations, not obesity-allergy association. Asthma exacerbations are not equivalent to allergy, and the study measures weight gain trajectory rather than obesity status.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"those with the slowest pattern of weight gain had a mean of 59.8 (95% CI 44.7\\u201380.1) courses per 100 child years compared with 89.8 (78.0\\u2013103.5) for the average weight change group and 91.1 (79.6\\u2013104.4) for the children with accelerated weight gain (P=.01)\", \"objection\": \"On the actual allergy/atopy measures, the source found the decelerated (leanest) group had the HIGHEST atopy, which runs opposite to the claimed obesity-allergy association.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"with the decelerated group demonstrating the highest degree of atopy\", \"objection\": \"Where the source directly touches allergy (atopy/IgE), heavier weight gain was NOT associated with more allergy; the leanest weight-gain group showed the highest atopy, contradicting an increased obesity-allergy association.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The authors explicitly caution the findings are preliminary and underpowered, undercutting use as evidence for a robust epidemiological obesity-allergy association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations, but instead can be used to prompt further studies\", \"objection\": \"The cohort is a highly specific group of high-risk wheezing children, and the authors state findings cannot be generalized, contradicting use as broad epidemiological support.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "partially-supported",
+            "confidence": 0.62,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE primarily studies infant weight gain pattern and asthma exacerbations, not obesity per se, and its own primary finding is that DECELERATED (slowest) weight gain was protective while heavier gain associated with more exacerbations — which does align directionally with an obesity-asthma link. The Discussion explicitly states 'Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms,' directly supporting an obesity-asthma (allergic) association. However, asthma is not synonymous with allergy, and where the SOURCE directly measured atopy (IgE, skin test positivity), the decelerated/leanest group had the HIGHEST atopy — running opposite to an obesity-allergy link. The claim's core is obesity↔allergy; the SOURCE supports obesity↔asthma but its direct atopy data go the other way. The finding bearing on the intervention (obesity) and outcome (allergy/atopy) is partial: asthma morbidity linked to weight, but atopy inversely related. This is a mixed picture rather than a clean primary reversal — the SOURCE's supportive statements on obesity-asthma are genuine background citations, but the claim over-generalizes 'asthma' to 'allergy' and the direct atopy data contradict. Best fit is partially-supported: the obesity-asthma association is present and supportive, but the allergy/atopy conjunct is not supported (indeed inverse).",
+            "decisive_spans": [
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+              "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity",
+              "with the decelerated group demonstrating the highest degree of atopy",
+              "The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity"
+            ],
+            "boundary_test_fired": "decomposition",
+            "grade_rationale_last": "SOURCE supports an obesity-asthma association but its direct atopy/allergy measures run inversely, so the obesity-allergy claim is only partially backed.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE primarily studies infant weight gain pattern and asthma exacerbations, not obesity per se, and its own primary finding is that DECELERATED (slowest) weight gain was protective while heavier gain associated with more exacerbations — which does align directionally with an obesity-asthma link. The Discussion explicitly states 'Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms,' directly supporting an obesity-asthma (allergic) association. However, asthma is not synonymous with allergy, and where the SOURCE directly measured atopy (IgE, skin test positivity), the decelerated/leanest group had the HIGHEST atopy — running opposite to an obesity-allergy link. The claim's core is obesity↔allergy; the SOURCE supports obesity↔asthma but its direct atopy data go the other way. The finding bearing on the intervention (obesity) and outcome (allergy/atopy) is partial: asthma morbidity linked to weight, but atopy inversely related. This is a mixed picture rather than a clean primary reversal — the SOURCE's supportive statements on obesity-asthma are genuine background citations, but the claim over-generalizes 'asthma' to 'allergy' and the direct atopy data contradict. Best fit is partially-supported: the obesity-asthma association is present and supportive, but the allergy/atopy conjunct is not supported (indeed inverse).\", \"decisive_spans\": [\"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity\", \"with the decelerated group demonstrating the highest degree of atopy\", \"The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity\"], \"boundary_test_fired\": \"decomposition\", \"grade\": \"partially-supported\", \"confidence\": 0.62, \"grade_rationale_last\": \"SOURCE supports an obesity-asthma association but its direct atopy/allergy measures run inversely, so the obesity-allergy claim is only partially backed.\"}"
+          },
+          "critic_grade": "partially-supported",
+          "critic_confidence": 0.62,
+          "agreement": 0.0,
+          "usage": {
+            "critic_output_tokens": 863,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.064725,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 2,
+          "supporter": {
+            "points": [
+              {
+                "quote": "early life patterns of weight change were associated with subsequent asthma exacerbations",
+                "rationale": "Directly supports an association between weight/obesity-related growth and an allergic/atopic respiratory disease (asthma), consistent with the claimed obesity–allergy association.",
+                "claim_component": "association of obesity/weight and allergic disease"
+              },
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Explicitly states an epidemiological association between higher BMI (obesity) and asthma, an allergic disease, supporting the claim.",
+                "claim_component": "epidemiological obesity–allergy association"
+              },
+              {
+                "quote": "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period",
+                "rationale": "Describes increased risk of asthma with the development of obesity, supporting an increased association between obesity and allergic/respiratory disease.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Links overweight status to worse asthma outcomes, supporting the obesity–allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "Like obesity, the prevalence of asthma has increased over the past several decades.",
+                "rationale": "Highlights the parallel rise of obesity and asthma prevalence, underpinning the epidemiological linkage the claim asserts.",
+                "claim_component": "recent epidemiological trend linking obesity and allergy"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Acknowledges an established relationship between obesity and asthma, consistent with the claimed association.",
+                "claim_component": "obesity–allergy relationship"
+              }
+            ],
+            "stance": "Directly supports an association between weight/obesity-related growth and an allergic/atopic respiratory disease (asthma), consistent with the claimed obesity–allergy association.",
+            "raw": "{\"points\": [{\"quote\": \"early life patterns of weight change were associated with subsequent asthma exacerbations\", \"rationale\": \"Directly supports an association between weight/obesity-related growth and an allergic/atopic respiratory disease (asthma), consistent with the claimed obesity–allergy association.\", \"claim_component\": \"association of obesity/weight and allergic disease\"}, {\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Explicitly states an epidemiological association between higher BMI (obesity) and asthma, an allergic disease, supporting the claim.\", \"claim_component\": \"epidemiological obesity–allergy association\"}, {\"quote\": \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period\", \"rationale\": \"Describes increased risk of asthma with the development of obesity, supporting an increased association between obesity and allergic/respiratory disease.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Links overweight status to worse asthma outcomes, supporting the obesity–allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"Like obesity, the prevalence of asthma has increased over the past several decades.\", \"rationale\": \"Highlights the parallel rise of obesity and asthma prevalence, underpinning the epidemiological linkage the claim asserts.\", \"claim_component\": \"recent epidemiological trend linking obesity and allergy\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Acknowledges an established relationship between obesity and asthma, consistent with the claimed association.\", \"claim_component\": \"obesity–allergy relationship\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The claim is about obesity and ALLERGY, but this source studies infant weight gain pattern and asthma outcomes (exacerbations, symptoms, lung function) — not an association between obesity and allergy.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "At study enrollment, weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy.",
+                "objection": "To the extent allergic/atopic markers are examined, the finding runs OPPOSITE to the claim: the slowest-weight-gain (least obese-trajectory) group had the HIGHEST atopy, contradicting an increased obesity–allergy association.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The source itself frames its results as preliminary and underpowered, undercutting its use to assert a robust epidemiological association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "The primary impairment-domain outcomes showed no association, so the source does not broadly establish an obesity-related increase in this cohort.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations",
+                "objection": "The source explicitly disclaims generalization beyond a narrow high-risk wheezing toddler cohort, contradicting its citation as broad epidemiological data on obesity and allergy.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The claim is about obesity and ALLERGY, but this source studies infant weight gain pattern and asthma outcomes (exacerbations, symptoms, lung function) — not an association betwee…",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The claim is about obesity and ALLERGY, but this source studies infant weight gain pattern and asthma outcomes (exacerbations, symptoms, lung function) — not an association between obesity and allergy.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"At study enrollment, weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy.\", \"objection\": \"To the extent allergic/atopic markers are examined, the finding runs OPPOSITE to the claim: the slowest-weight-gain (least obese-trajectory) group had the HIGHEST atopy, contradicting an increased obesity–allergy association.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The source itself frames its results as preliminary and underpowered, undercutting its use to assert a robust epidemiological association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"The primary impairment-domain outcomes showed no association, so the source does not broadly establish an obesity-related increase in this cohort.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations\", \"objection\": \"The source explicitly disclaims generalization beyond a narrow high-risk wheezing toddler cohort, contradicting its citation as broad epidemiological data on obesity and allergy.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.62,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's primary finding concerns infant weight gain pattern and asthma exacerbations — specifically that slower (decelerated) weight gain was PROTECTIVE for exacerbations, meaning accelerated (obesity-trajectory) growth associated with MORE exacerbations. This direction supports an obesity–asthma link. The Discussion explicitly cites established epidemiological associations: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms.' These support the direction of the claim (obesity linked to asthma). However, the claim frames this specifically as obesity and ALLERGY. Asthma is a respiratory/atopic disease but the SOURCE's own finding on atopic markers (IgE, aeroallergen skin test) actually ran the OTHER way — the decelerated (slower gain) group had the HIGHEST atopy. So the pure allergy/atopy angle is mixed, but asthma-as-allergic-disease association with obesity is genuinely supported in the SOURCE's discussion and consistent with its primary finding. The SOURCE substantively backs an obesity–asthma (allergic disease) association in the claimed direction, but hedges ('preliminary', 'underpowered', impairment outcomes null). This is a supportive finding with over-assertion of certainty relative to source hedges, and slight mechanism/target mischaracterization (asthma vs allergy generally).",
+            "decisive_spans": [
+              "early life patterns of weight change were associated with subsequent asthma exacerbations",
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+              "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms",
+              "Given the small sample size, the findings should be viewed as preliminary"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "SOURCE reports obesity-asthma associations in the claimed direction but is hedged/preliminary and centers asthma rather than allergy broadly, so the claim over-asserts certainty and generality.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's primary finding concerns infant weight gain pattern and asthma exacerbations — specifically that slower (decelerated) weight gain was PROTECTIVE for exacerbations, meaning accelerated (obesity-trajectory) growth associated with MORE exacerbations. This direction supports an obesity–asthma link. The Discussion explicitly cites established epidemiological associations: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms.' These support the direction of the claim (obesity linked to asthma). However, the claim frames this specifically as obesity and ALLERGY. Asthma is a respiratory/atopic disease but the SOURCE's own finding on atopic markers (IgE, aeroallergen skin test) actually ran the OTHER way — the decelerated (slower gain) group had the HIGHEST atopy. So the pure allergy/atopy angle is mixed, but asthma-as-allergic-disease association with obesity is genuinely supported in the SOURCE's discussion and consistent with its primary finding. The SOURCE substantively backs an obesity–asthma (allergic disease) association in the claimed direction, but hedges ('preliminary', 'underpowered', impairment outcomes null). This is a supportive finding with over-assertion of certainty relative to source hedges, and slight mechanism/target mischaracterization (asthma vs allergy generally).\", \"decisive_spans\": [\"early life patterns of weight change were associated with subsequent asthma exacerbations\", \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms\", \"Given the small sample size, the findings should be viewed as preliminary\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.62, \"grade_rationale_last\": \"SOURCE reports obesity-asthma associations in the claimed direction but is hedged/preliminary and centers asthma rather than allergy broadly, so the claim over-asserts certainty and generality.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.62,
+          "agreement": 0.5,
+          "usage": {
+            "critic_output_tokens": 826,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.06195,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 3,
+          "supporter": {
+            "points": [
+              {
+                "quote": "the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly asserts an epidemiological association between higher body weight (obesity/BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Supports a positive association between excess weight and asthma morbidity, consistent with the claimed obesity-allergy link.",
+                "claim_component": "increased association of obesity and asthma"
+              },
+              {
+                "quote": "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74",
+                "rationale": "Provides epidemiological evidence linking obesity to increased risk of asthma symptoms, directly relevant to the claimed obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "Like obesity, the prevalence of asthma has increased over the past several decades.",
+                "rationale": "Establishes the parallel rise of obesity and asthma prevalence, background for the epidemiological association asserted in the claim.",
+                "claim_component": "recent epidemiological data / increased association"
+              },
+              {
+                "quote": "slower weight gain during the infant years relative to growth chart norms was protective for asthma exacerbations during the preschool years",
+                "rationale": "Reciprocally, this indicates greater weight gain is associated with more asthma exacerbations, supporting an obesity-asthma association direction.",
+                "claim_component": "increased association of obesity and asthma"
+              },
+              {
+                "quote": "the results of this analysis describe a relationship between weight gain pattern during infancy and components of asthma later in childhood",
+                "rationale": "Directly documents an association between weight/growth (obesity-related) and asthma, supporting the claimed link.",
+                "claim_component": "association of obesity and allergy"
+              }
+            ],
+            "stance": "Directly asserts an epidemiological association between higher body weight (obesity/BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy…",
+            "raw": "{\"points\": [{\"quote\": \"the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly asserts an epidemiological association between higher body weight (obesity/BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Supports a positive association between excess weight and asthma morbidity, consistent with the claimed obesity-allergy link.\", \"claim_component\": \"increased association of obesity and asthma\"}, {\"quote\": \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74\", \"rationale\": \"Provides epidemiological evidence linking obesity to increased risk of asthma symptoms, directly relevant to the claimed obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"Like obesity, the prevalence of asthma has increased over the past several decades.\", \"rationale\": \"Establishes the parallel rise of obesity and asthma prevalence, background for the epidemiological association asserted in the claim.\", \"claim_component\": \"recent epidemiological data / increased association\"}, {\"quote\": \"slower weight gain during the infant years relative to growth chart norms was protective for asthma exacerbations during the preschool years\", \"rationale\": \"Reciprocally, this indicates greater weight gain is associated with more asthma exacerbations, supporting an obesity-asthma association direction.\", \"claim_component\": \"increased association of obesity and asthma\"}, {\"quote\": \"the results of this analysis describe a relationship between weight gain pattern during infancy and components of asthma later in childhood\", \"rationale\": \"Directly documents an association between weight/growth (obesity-related) and asthma, supporting the claimed link.\", \"claim_component\": \"association of obesity and allergy\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The SOURCE studies weight gain and asthma, not obesity and allergy. The claim is about the association between obesity and allergy, which is not what this paper measures.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "At study enrollment, weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy.",
+                "objection": "To the extent the paper touches allergy/atopy, its finding runs OPPOSITE to the claim: the slowest weight-gain (least obesogenic) group showed the HIGHEST atopy, not increased allergy with increased weight. This contradicts an 'increased association of obesity and allergy'.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "The primary impairment outcomes showed no association, undermining any straightforward positive obesity-related respiratory/allergic disease link the claim implies.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "fewer exacerbations occurring amongst those with a decelerated weight gain pattern",
+                "objection": "The morbidity association is with weight gain pattern and exacerbations (an asthma severity outcome), not with allergy per se, and the atopy pattern goes the other way — this does not support an increased obesity-allergy association.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The authors themselves frame results as preliminary and underpowered, so they cannot substantiate a firm epidemiological 'increased association'.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations, but instead can be used to prompt further studies",
+                "objection": "The cohort was a specific high-risk asthmatic pediatric population; using it to support a general epidemiological claim about obesity and allergy over-generalizes the scope.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The SOURCE studies weight gain and asthma, not obesity and allergy. The claim is about the association between obesity and allergy, which is not what this paper measures.",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The SOURCE studies weight gain and asthma, not obesity and allergy. The claim is about the association between obesity and allergy, which is not what this paper measures.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"At study enrollment, weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy.\", \"objection\": \"To the extent the paper touches allergy/atopy, its finding runs OPPOSITE to the claim: the slowest weight-gain (least obesogenic) group showed the HIGHEST atopy, not increased allergy with increased weight. This contradicts an 'increased association of obesity and allergy'.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"The primary impairment outcomes showed no association, undermining any straightforward positive obesity-related respiratory/allergic disease link the claim implies.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"fewer exacerbations occurring amongst those with a decelerated weight gain pattern\", \"objection\": \"The morbidity association is with weight gain pattern and exacerbations (an asthma severity outcome), not with allergy per se, and the atopy pattern goes the other way — this does not support an increased obesity-allergy association.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The authors themselves frame results as preliminary and underpowered, so they cannot substantiate a firm epidemiological 'increased association'.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations, but instead can be used to prompt further studies\", \"objection\": \"The cohort was a specific high-risk asthmatic pediatric population; using it to support a general epidemiological claim about obesity and allergy over-generalizes the scope.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.6,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE is a study on infant weight gain and later asthma. Its PRIMARY finding is about weight gain pattern and asthma exacerbations, not obesity-allergy. However, the discussion contains verbatim epidemiological statements supporting an obesity-asthma link: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms.' These support an obesity/asthma association in the claimed direction. But asthma is not the same as 'allergy' broadly, though asthma is an atopic/allergic condition and commonly cited in this context. Argument B notes the atopy finding within the primary cohort runs opposite (decelerated group had highest atopy), but that is a within-cohort atopy-weight observation, not the paper's headline on the obesity-allergy epidemiological relationship, and it does not reverse the direction of the cited background epidemiology. The SOURCE's substantive content on obesity/BMI and asthma runs in the claimed direction. The claim overstates by generalizing to 'allergy' and treating this study (whose own primary finding is preliminary/underpowered and weight-gain-focused) as firm epidemiological support. The finding of an association is present but the claim over-reaches by generalizing asthma to allergy and asserting a robust epidemiological increase.",
+            "decisive_spans": [
+              "the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+              "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity",
+              "Like obesity, the prevalence of asthma has increased over the past several decades."
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "SOURCE reports an obesity/BMI-asthma positive association in the claimed direction, but the claim over-reaches by generalizing to 'allergy' and asserting firm epidemiological increase.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE is a study on infant weight gain and later asthma. Its PRIMARY finding is about weight gain pattern and asthma exacerbations, not obesity-allergy. However, the discussion contains verbatim epidemiological statements supporting an obesity-asthma link: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese... had an increased risk of developing new asthma symptoms.' These support an obesity/asthma association in the claimed direction. But asthma is not the same as 'allergy' broadly, though asthma is an atopic/allergic condition and commonly cited in this context. Argument B notes the atopy finding within the primary cohort runs opposite (decelerated group had highest atopy), but that is a within-cohort atopy-weight observation, not the paper's headline on the obesity-allergy epidemiological relationship, and it does not reverse the direction of the cited background epidemiology. The SOURCE's substantive content on obesity/BMI and asthma runs in the claimed direction. The claim overstates by generalizing to 'allergy' and treating this study (whose own primary finding is preliminary/underpowered and weight-gain-focused) as firm epidemiological support. The finding of an association is present but the claim over-reaches by generalizing asthma to allergy and asserting a robust epidemiological increase.\", \"decisive_spans\": [\"the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity\", \"Like obesity, the prevalence of asthma has increased over the past several decades.\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.6, \"grade_rationale_last\": \"SOURCE reports an obesity/BMI-asthma positive association in the claimed direction, but the claim over-reaches by generalizing to 'allergy' and asserting firm epidemiological increase.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.6,
+          "agreement": 0.6667,
+          "usage": {
+            "critic_output_tokens": 768,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.0576,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 4,
+          "supporter": {
+            "points": [
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly states an epidemiological association between elevated body weight (BMI) and asthma, supporting the claim of an increased association between obesity and allergy/asthma.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.",
+                "rationale": "Provides evidence linking weight gain (an obesity-related trait) to asthma morbidity, supporting the obesity-allergy association.",
+                "claim_component": "association of obesity and allergy"
+              },
+              {
+                "quote": "The Tucson Children’s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74",
+                "rationale": "Cites epidemiological data showing that becoming overweight/obese increases risk of asthma symptoms, directly supporting an increased obesity-allergy association.",
+                "claim_component": "increased association / directionality"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Epidemiological evidence linking overweight status to greater asthma-related morbidity, reinforcing the obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "Like obesity, the prevalence of asthma has increased over the past several decades.",
+                "rationale": "Notes parallel rising prevalence trends of obesity and asthma, framing the epidemiological association the claim references.",
+                "claim_component": "recent epidemiological data"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Explicitly references an established relationship between obesity and asthma symptoms, supporting the asserted association.",
+                "claim_component": "association of obesity and allergy"
+              }
+            ],
+            "stance": "Directly states an epidemiological association between elevated body weight (BMI) and asthma, supporting the claim of an increased association between obesity and allergy/asthma.",
+            "raw": "{\"points\": [{\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly states an epidemiological association between elevated body weight (BMI) and asthma, supporting the claim of an increased association between obesity and allergy/asthma.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.\", \"rationale\": \"Provides evidence linking weight gain (an obesity-related trait) to asthma morbidity, supporting the obesity-allergy association.\", \"claim_component\": \"association of obesity and allergy\"}, {\"quote\": \"The Tucson Children\\u2019s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74\", \"rationale\": \"Cites epidemiological data showing that becoming overweight/obese increases risk of asthma symptoms, directly supporting an increased obesity-allergy association.\", \"claim_component\": \"increased association / directionality\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Epidemiological evidence linking overweight status to greater asthma-related morbidity, reinforcing the obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"Like obesity, the prevalence of asthma has increased over the past several decades.\", \"rationale\": \"Notes parallel rising prevalence trends of obesity and asthma, framing the epidemiological association the claim references.\", \"claim_component\": \"recent epidemiological data\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Explicitly references an established relationship between obesity and asthma symptoms, supporting the asserted association.\", \"claim_component\": \"association of obesity and allergy\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The claim concerns an association between obesity and allergy, but this SOURCE studies infant weight gain patterns and asthma outcomes, not obesity per se and not allergy. Asthma is not synonymous with allergy, and weight gain pattern is not obesity.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the decelerated group demonstrating the highest degree of atopy",
+                "objection": "To the extent this SOURCE touches on allergy/atopy, its finding runs OPPOSITE to the claimed increased association: the group with the SLOWEST weight gain (least obesity-like) had the HIGHEST atopy, i.e., an inverse relationship between weight and allergy.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "The SOURCE's main impairment-domain finding was null, undermining any use of this paper as evidence of an obesity/weight–allergy or asthma association.",
+                "distortion_type": "no_evidence_for_support",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The authors explicitly caution their findings are preliminary, contradicting the claim's use of this as firm epidemiological evidence of an increased association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this cohort was not representative of the general population or the overall population of asthmatic children",
+                "objection": "The authors state the results cannot be generalized, so citing this as general epidemiological support for an obesity–allergy association over-generalizes a narrow at-risk cohort.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The claim concerns an association between obesity and allergy, but this SOURCE studies infant weight gain patterns and asthma outcomes, not obesity per se and not allergy. Asthma …",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The claim concerns an association between obesity and allergy, but this SOURCE studies infant weight gain patterns and asthma outcomes, not obesity per se and not allergy. Asthma is not synonymous with allergy, and weight gain pattern is not obesity.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the decelerated group demonstrating the highest degree of atopy\", \"objection\": \"To the extent this SOURCE touches on allergy/atopy, its finding runs OPPOSITE to the claimed increased association: the group with the SLOWEST weight gain (least obesity-like) had the HIGHEST atopy, i.e., an inverse relationship between weight and allergy.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"The SOURCE's main impairment-domain finding was null, undermining any use of this paper as evidence of an obesity/weight–allergy or asthma association.\", \"distortion_type\": \"no_evidence_for_support\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The authors explicitly caution their findings are preliminary, contradicting the claim's use of this as firm epidemiological evidence of an increased association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this cohort was not representative of the general population or the overall population of asthmatic children\", \"objection\": \"The authors state the results cannot be generalized, so citing this as general epidemiological support for an obesity–allergy association over-generalizes a narrow at-risk cohort.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.6,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's PRIMARY finding concerns infant weight gain pattern and asthma exacerbations — and notably finds a PROTECTIVE effect of slower weight gain, i.e., accelerated (more obesity-like) weight gain associated with MORE exacerbations, which is directionally consistent with the claim's obesity–allergy/asthma association. Argument B correctly identifies verbatim discussion spans that state an increased association: 'the prevalence of asthma is associated with increased body mass index during childhood', 'females who became overweight or obese... had an increased risk of developing new asthma symptoms', and 'overweight children... had a higher hospital admission rate'. These support the claimed increased association. However, these are Discussion/background citations to OTHER studies, and the paper's own primary outcome (impairment domain) was null. Argument A's strongest point — that the decelerated (leanest) group had the highest atopy — is a secondary baseline finding on atopy, not the paper's primary relationship, and does not overturn the overall direction. The claim uses 'obesity and allergy' broadly; the SOURCE substance is asthma/weight, closely adjacent, and directionally supports an increased association, though the paper's own primary result is more equivocal (exacerbations yes, symptoms/lung function no). This is over-reach on certainty/magnitude rather than contradiction: the finding is present but the SOURCE hedges heavily ('preliminary', 'relatively minor', not generalizable).",
+            "decisive_spans": [
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.",
+              "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity",
+              "Given the small sample size, the findings should be viewed as preliminary"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "SOURCE reports increased obesity/weight–asthma associations directionally consistent with claim, but its own primary result is hedged/partly null, so citing it as firm epidemiological support over-reaches on certainty.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's PRIMARY finding concerns infant weight gain pattern and asthma exacerbations — and notably finds a PROTECTIVE effect of slower weight gain, i.e., accelerated (more obesity-like) weight gain associated with MORE exacerbations, which is directionally consistent with the claim's obesity–allergy/asthma association. Argument B correctly identifies verbatim discussion spans that state an increased association: 'the prevalence of asthma is associated with increased body mass index during childhood', 'females who became overweight or obese... had an increased risk of developing new asthma symptoms', and 'overweight children... had a higher hospital admission rate'. These support the claimed increased association. However, these are Discussion/background citations to OTHER studies, and the paper's own primary outcome (impairment domain) was null. Argument A's strongest point — that the decelerated (leanest) group had the highest atopy — is a secondary baseline finding on atopy, not the paper's primary relationship, and does not overturn the overall direction. The claim uses 'obesity and allergy' broadly; the SOURCE substance is asthma/weight, closely adjacent, and directionally supports an increased association, though the paper's own primary result is more equivocal (exacerbations yes, symptoms/lung function no). This is over-reach on certainty/magnitude rather than contradiction: the finding is present but the SOURCE hedges heavily ('preliminary', 'relatively minor', not generalizable).\", \"decisive_spans\": [\"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.\", \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity\", \"Given the small sample size, the findings should be viewed as preliminary\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.6, \"grade_rationale_last\": \"SOURCE reports increased obesity/weight–asthma associations directionally consistent with claim, but its own primary result is hedged/partly null, so citing it as firm epidemiological support over-reaches on certainty.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.6,
+          "agreement": 0.75,
+          "usage": {
+            "critic_output_tokens": 805,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.060375,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 5,
+          "supporter": {
+            "points": [
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly asserts an association between increased body weight (obesity/BMI) and asthma, an allergic/atopic respiratory condition, supporting the claim of increased association between obesity and allergy.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period",
+                "rationale": "Provides epidemiological evidence that becoming overweight/obese increases the risk of developing asthma symptoms, directly supporting a positive obesity-allergy association.",
+                "claim_component": "increased association / direction of effect"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma",
+                "rationale": "Supports a link between obesity and worse asthma outcomes, reinforcing the obesity-allergy association.",
+                "claim_component": "obesity associated with allergic disease severity"
+              },
+              {
+                "quote": "the data describing an association between early life weight gain and asthma exacerbations does provide evidence of a link between early life growth and subsequent asthma for children",
+                "rationale": "The source's own finding establishes a link between weight/growth and asthma, an allergic condition, supporting the claimed obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Explicitly acknowledges an established relationship between obesity and asthma symptoms, supporting the claimed association.",
+                "claim_component": "mechanistic obesity-allergy relationship"
+              },
+              {
+                "quote": "obesity is associated with mechanical factors, chronic systemic inflammation, and adipose tissue and energy-related hormones that all may be related to an individual’s asthma",
+                "rationale": "Provides mechanistic underpinning linking obesity to asthma, supporting a substantive obesity-allergy association.",
+                "claim_component": "mechanism of obesity-allergy link"
+              }
+            ],
+            "stance": "Directly asserts an association between increased body weight (obesity/BMI) and asthma, an allergic/atopic respiratory condition, supporting the claim of increased association bet…",
+            "raw": "{\"points\": [{\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly asserts an association between increased body weight (obesity/BMI) and asthma, an allergic/atopic respiratory condition, supporting the claim of increased association between obesity and allergy.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period\", \"rationale\": \"Provides epidemiological evidence that becoming overweight/obese increases the risk of developing asthma symptoms, directly supporting a positive obesity-allergy association.\", \"claim_component\": \"increased association / direction of effect\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma\", \"rationale\": \"Supports a link between obesity and worse asthma outcomes, reinforcing the obesity-allergy association.\", \"claim_component\": \"obesity associated with allergic disease severity\"}, {\"quote\": \"the data describing an association between early life weight gain and asthma exacerbations does provide evidence of a link between early life growth and subsequent asthma for children\", \"rationale\": \"The source's own finding establishes a link between weight/growth and asthma, an allergic condition, supporting the claimed obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Explicitly acknowledges an established relationship between obesity and asthma symptoms, supporting the claimed association.\", \"claim_component\": \"mechanistic obesity-allergy relationship\"}, {\"quote\": \"obesity is associated with mechanical factors, chronic systemic inflammation, and adipose tissue and energy-related hormones that all may be related to an individual\\u2019s asthma\", \"rationale\": \"Provides mechanistic underpinning linking obesity to asthma, supporting a substantive obesity-allergy association.\", \"claim_component\": \"mechanism of obesity-allergy link\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The source studies infant weight gain patterns and asthma outcomes, not obesity and allergy per se. The claim concerns an 'association of obesity and allergy,' which is a different relationship than infant weight gain pattern and asthma exacerbations.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "those with the slowest pattern of weight gain had a mean of 59.8 (95% CI 44.7–80.1) courses per 100 child years compared with 89.8 (78.0–103.5) for the average weight change group and 91.1 (79.6–104.4) for the children with accelerated weight gain",
+                "objection": "The source's finding is about weight GAIN pattern and asthma exacerbations, not obesity and allergy. It shows accelerated growth linked to more exacerbations — an asthma-morbidity outcome, not an allergy/atopy association supporting the claim.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the decelerated group demonstrating the highest degree of atopy",
+                "objection": "If anything, the source's data on atopy/allergy run OPPOSITE to the claimed obesity-allergy link: the slowest-growing (leanest) group had the HIGHEST atopy, meaning lower weight gain was associated with more allergy in this cohort.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "A key overall finding was a null result — no association between weight gain and asthma impairment measures — undercutting use of this paper as evidence of an increased obesity-allergy association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The authors explicitly caution their findings are preliminary and underpowered, so citing this as demonstrating an 'increased association' overstates the strength of the evidence.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations",
+                "objection": "The cohort is a specific high-risk-for-asthma toddler population; the authors state it cannot be generalized, whereas the claim invokes broad epidemiological data on obesity and allergy.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The source studies infant weight gain patterns and asthma outcomes, not obesity and allergy per se. The claim concerns an 'association of obesity and allergy,' which is a differen…",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The source studies infant weight gain patterns and asthma outcomes, not obesity and allergy per se. The claim concerns an 'association of obesity and allergy,' which is a different relationship than infant weight gain pattern and asthma exacerbations.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"those with the slowest pattern of weight gain had a mean of 59.8 (95% CI 44.7–80.1) courses per 100 child years compared with 89.8 (78.0–103.5) for the average weight change group and 91.1 (79.6–104.4) for the children with accelerated weight gain\", \"objection\": \"The source's finding is about weight GAIN pattern and asthma exacerbations, not obesity and allergy. It shows accelerated growth linked to more exacerbations — an asthma-morbidity outcome, not an allergy/atopy association supporting the claim.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the decelerated group demonstrating the highest degree of atopy\", \"objection\": \"If anything, the source's data on atopy/allergy run OPPOSITE to the claimed obesity-allergy link: the slowest-growing (leanest) group had the HIGHEST atopy, meaning lower weight gain was associated with more allergy in this cohort.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"A key overall finding was a null result — no association between weight gain and asthma impairment measures — undercutting use of this paper as evidence of an increased obesity-allergy association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The authors explicitly caution their findings are preliminary and underpowered, so citing this as demonstrating an 'increased association' overstates the strength of the evidence.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations\", \"objection\": \"The cohort is a specific high-risk-for-asthma toddler population; the authors state it cannot be generalized, whereas the claim invokes broad epidemiological data on obesity and allergy.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "supported-with-overreach",
+            "confidence": 0.55,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's primary study is about infant weight gain pattern and asthma exacerbations, not directly obesity-allergy. However, the citation appears in a list [200-203] as background support for the obesity-allergy association. The SOURCE's discussion does contain verbatim material supporting an obesity-asthma link: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese...had an increased risk of developing new asthma symptoms.' Asthma is an allergic/atopic condition, so these spans align with the claim's direction. Argument B's point about the decelerated group having highest atopy is a baseline subgroup observation, not a primary finding reversing the obesity-allergy relationship — the authors explicitly explain it as viral-infection-driven. The primary framing of the paper is consistent with a link between weight/obesity and asthma. The support is present but the paper's OWN primary finding is about weight-gain-pattern and exacerbations (preliminary, underpowered), and its direct obesity-allergy support comes from cited background rather than the paper's original result. This is a background/passing pointer for the obesity-allergy epidemiology claim rather than a paper whose own headline result establishes it. Still, it is on-point and directionally consistent, but over-reaches in being cited as demonstrating 'increased association' when its own contribution is preliminary and partly about exacerbations. Best fit: supported-with-overreach — the claimed relationship is present in the source's discussion, but the paper over-reaches as direct epidemiological evidence of the specific obesity-allergy association.",
+            "decisive_spans": [
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.",
+              "females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period",
+              "Given the small sample size, the findings should be viewed as preliminary"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "Source discussion affirms an obesity/BMI-asthma link consistent with the claim's direction, but its own primary finding is preliminary and about weight-gain pattern and exacerbations, over-reaching as direct evidence of an increased obesity-allergy association.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's primary study is about infant weight gain pattern and asthma exacerbations, not directly obesity-allergy. However, the citation appears in a list [200-203] as background support for the obesity-allergy association. The SOURCE's discussion does contain verbatim material supporting an obesity-asthma link: 'the prevalence of asthma is associated with increased body mass index during childhood' and 'females who became overweight or obese...had an increased risk of developing new asthma symptoms.' Asthma is an allergic/atopic condition, so these spans align with the claim's direction. Argument B's point about the decelerated group having highest atopy is a baseline subgroup observation, not a primary finding reversing the obesity-allergy relationship — the authors explicitly explain it as viral-infection-driven. The primary framing of the paper is consistent with a link between weight/obesity and asthma. The support is present but the paper's OWN primary finding is about weight-gain-pattern and exacerbations (preliminary, underpowered), and its direct obesity-allergy support comes from cited background rather than the paper's original result. This is a background/passing pointer for the obesity-allergy epidemiology claim rather than a paper whose own headline result establishes it. Still, it is on-point and directionally consistent, but over-reaches in being cited as demonstrating 'increased association' when its own contribution is preliminary and partly about exacerbations. Best fit: supported-with-overreach — the claimed relationship is present in the source's discussion, but the paper over-reaches as direct epidemiological evidence of the specific obesity-allergy association.\", \"decisive_spans\": [\"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.\", \"females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period\", \"Given the small sample size, the findings should be viewed as preliminary\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"supported-with-overreach\", \"confidence\": 0.55, \"grade_rationale_last\": \"Source discussion affirms an obesity/BMI-asthma link consistent with the claim's direction, but its own primary finding is preliminary and about weight-gain pattern and exacerbations, over-reaching as direct evidence of an increased obesity-allergy association.\"}"
+          },
+          "critic_grade": "supported-with-overreach",
+          "critic_confidence": 0.55,
+          "agreement": 0.8,
+          "usage": {
+            "critic_output_tokens": 818,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.06135,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 6,
+          "supporter": {
+            "points": [
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly asserts a positive epidemiological association between increased body weight (obesity/BMI) and asthma (an allergic/atopic respiratory disease), supporting the claim of an increased association between obesity and allergy.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "The Tucson Children’s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74",
+                "rationale": "Cites epidemiological cohort evidence that becoming overweight/obese increased risk of asthma symptoms, supporting the direction of an increased obesity-allergy/asthma association.",
+                "claim_component": "increased association / direction"
+              },
+              {
+                "quote": "We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations",
+                "rationale": "Provides original epidemiological/clinical data linking weight gain to asthma outcomes, contributing to the body of evidence associating obesity-related weight status with allergic disease.",
+                "claim_component": "epidemiological data linking weight and allergy"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Acknowledges an established relationship between obesity and asthma, consistent with the claimed association.",
+                "claim_component": "association of obesity and allergy"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Additional epidemiological evidence tying overweight status to worse allergic/asthma outcomes, supporting an increased obesity-allergy association.",
+                "claim_component": "increased association"
+              }
+            ],
+            "stance": "Directly asserts a positive epidemiological association between increased body weight (obesity/BMI) and asthma (an allergic/atopic respiratory disease), supporting the claim of an…",
+            "raw": "{\"points\": [{\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly asserts a positive epidemiological association between increased body weight (obesity/BMI) and asthma (an allergic/atopic respiratory disease), supporting the claim of an increased association between obesity and allergy.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"The Tucson Children\\u2019s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74\", \"rationale\": \"Cites epidemiological cohort evidence that becoming overweight/obese increased risk of asthma symptoms, supporting the direction of an increased obesity-allergy/asthma association.\", \"claim_component\": \"increased association / direction\"}, {\"quote\": \"We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations\", \"rationale\": \"Provides original epidemiological/clinical data linking weight gain to asthma outcomes, contributing to the body of evidence associating obesity-related weight status with allergic disease.\", \"claim_component\": \"epidemiological data linking weight and allergy\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Acknowledges an established relationship between obesity and asthma, consistent with the claimed association.\", \"claim_component\": \"association of obesity and allergy\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Additional epidemiological evidence tying overweight status to worse allergic/asthma outcomes, supporting an increased obesity-allergy association.\", \"claim_component\": \"increased association\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The claim concerns 'obesity and allergy,' but this source studies infant weight gain pattern and asthma outcomes — asthma is a respiratory disease, not synonymous with allergy, and the paper does not measure obesity or an obesity-allergy association.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "The paper's primary impairment-domain findings were null, so it does not provide clean support for an 'increased association' between weight and asthma/allergy.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "with fewer exacerbations occurring amongst those with a decelerated weight gain pattern",
+                "objection": "The claim asserts obesity/higher weight increases allergy; but the source's atopic markers ran opposite — see below — and the only positive findings were about exacerbations (viral-triggered), not allergy.",
+                "distortion_type": "cherry_picking",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "the decelerated group demonstrating the highest degree of atopy",
+                "objection": "On the atopy/allergy measures (IgE, aeroallergen skin test), the LOWEST weight-gain group had the HIGHEST allergy — directly opposite to the claimed 'increased association of obesity and allergy.'",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "Authors explicitly caution the results are preliminary, undercutting use of this source to assert a robust epidemiological association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations",
+                "objection": "The cohort is a specific high-risk wheezing group, not representative epidemiological data on obesity and allergy as the claim implies.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "direction_reversal",
+            "refuter_grade_pressure": "strong",
+            "stance": "The claim concerns 'obesity and allergy,' but this source studies infant weight gain pattern and asthma outcomes — asthma is a respiratory disease, not synonymous with allergy, an…",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The claim concerns 'obesity and allergy,' but this source studies infant weight gain pattern and asthma outcomes — asthma is a respiratory disease, not synonymous with allergy, and the paper does not measure obesity or an obesity-allergy association.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"The paper's primary impairment-domain findings were null, so it does not provide clean support for an 'increased association' between weight and asthma/allergy.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"with fewer exacerbations occurring amongst those with a decelerated weight gain pattern\", \"objection\": \"The claim asserts obesity/higher weight increases allergy; but the source's atopic markers ran opposite — see below — and the only positive findings were about exacerbations (viral-triggered), not allergy.\", \"distortion_type\": \"cherry_picking\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"the decelerated group demonstrating the highest degree of atopy\", \"objection\": \"On the atopy/allergy measures (IgE, aeroallergen skin test), the LOWEST weight-gain group had the HIGHEST allergy — directly opposite to the claimed 'increased association of obesity and allergy.'\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"Authors explicitly caution the results are preliminary, undercutting use of this source to assert a robust epidemiological association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations\", \"objection\": \"The cohort is a specific high-risk wheezing group, not representative epidemiological data on obesity and allergy as the claim implies.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"direction_reversal\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "partially-supported",
+            "confidence": 0.62,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's own primary finding concerns infant weight gain pattern and asthma exacerbations, and it found slower (decelerated) weight gain protective for exacerbations — consistent in direction with heavier/accelerated weight associating with more asthma morbidity. The Discussion explicitly cites the broader epidemiological literature: 'Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood' and the Tucson study showing overweight/obese females had 'increased risk of developing new asthma symptoms.' These support a positive obesity-asthma association. However: (a) the claim is about obesity and ALLERGY, whereas the SOURCE's atopy measures (IgE, skin test) ran OPPOSITE — the decelerated (lowest weight) group had the highest atopy; (b) the SOURCE studies weight-gain PATTERN and asthma, not obesity-allergy per se, and its impairment-domain findings were null; (c) findings are hedged as preliminary. The direction on the asthma/weight association is broadly supportive, so not contradicted. But the SOURCE does not cleanly substantiate an 'increased association of obesity and allergy' as its primary finding — asthma exacerbations (viral-triggered) are the positive result, and the actual atopy/allergy signal ran the other way. This is on-point in a general sense but the specific obesity-allergy relationship is only partially and indirectly supported, with a notable opposite atopy finding.",
+            "decisive_spans": [
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.",
+              "the decelerated group demonstrating the highest degree of atopy",
+              "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+              "We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations"
+            ],
+            "boundary_test_fired": "literal-truth",
+            "grade_rationale_last": "SOURCE supports an obesity-asthma morbidity association in direction, but its allergy/atopy signal ran opposite and the primary positive finding is exacerbations, not an obesity-allergy link.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE's own primary finding concerns infant weight gain pattern and asthma exacerbations, and it found slower (decelerated) weight gain protective for exacerbations — consistent in direction with heavier/accelerated weight associating with more asthma morbidity. The Discussion explicitly cites the broader epidemiological literature: 'Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood' and the Tucson study showing overweight/obese females had 'increased risk of developing new asthma symptoms.' These support a positive obesity-asthma association. However: (a) the claim is about obesity and ALLERGY, whereas the SOURCE's atopy measures (IgE, skin test) ran OPPOSITE — the decelerated (lowest weight) group had the highest atopy; (b) the SOURCE studies weight-gain PATTERN and asthma, not obesity-allergy per se, and its impairment-domain findings were null; (c) findings are hedged as preliminary. The direction on the asthma/weight association is broadly supportive, so not contradicted. But the SOURCE does not cleanly substantiate an 'increased association of obesity and allergy' as its primary finding — asthma exacerbations (viral-triggered) are the positive result, and the actual atopy/allergy signal ran the other way. This is on-point in a general sense but the specific obesity-allergy relationship is only partially and indirectly supported, with a notable opposite atopy finding.\", \"decisive_spans\": [\"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.\", \"the decelerated group demonstrating the highest degree of atopy\", \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"We conclude that early life patterns of weight change were associated with subsequent asthma exacerbations\"], \"boundary_test_fired\": \"literal-truth\", \"grade\": \"partially-supported\", \"confidence\": 0.62, \"grade_rationale_last\": \"SOURCE supports an obesity-asthma morbidity association in direction, but its allergy/atopy signal ran opposite and the primary positive finding is exacerbations, not an obesity-allergy link.\"}"
+          },
+          "critic_grade": "partially-supported",
+          "critic_confidence": 0.62,
+          "agreement": 0.6667,
+          "usage": {
+            "critic_output_tokens": 896,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.0672,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        },
+        {
+          "round": 7,
+          "supporter": {
+            "points": [
+              {
+                "quote": "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+                "rationale": "Directly asserts an association between increased body weight (BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "The Tucson Children’s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74",
+                "rationale": "Epidemiological cohort data linking becoming overweight/obese with increased asthma risk, supporting the increased association of obesity and allergic airway disease.",
+                "claim_component": "epidemiological data / increased association"
+              },
+              {
+                "quote": "The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.",
+                "rationale": "Provides evidence that weight/growth (a body-mass-related factor) is associated with asthma outcomes, consistent with an obesity-allergy link.",
+                "claim_component": "association of obesity and allergy"
+              },
+              {
+                "quote": "overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72",
+                "rationale": "Epidemiological finding tying overweight status to worse asthma outcomes, supporting an obesity-allergy association.",
+                "claim_component": "increased association of obesity and allergy"
+              },
+              {
+                "quote": "Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms",
+                "rationale": "Explicitly acknowledges a recognized relationship between obesity and asthma, aligning with the claimed obesity-allergy association.",
+                "claim_component": "association of obesity and allergy"
+              },
+              {
+                "quote": "Like obesity, the prevalence of asthma has increased over the past several decades.",
+                "rationale": "Notes the parallel rising prevalence of obesity and asthma, background supporting an increasing epidemiological connection between the two.",
+                "claim_component": "recent epidemiological data / increased association"
+              }
+            ],
+            "stance": "Directly asserts an association between increased body weight (BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.",
+            "raw": "{\"points\": [{\"quote\": \"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"rationale\": \"Directly asserts an association between increased body weight (BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"The Tucson Children\\u2019s Respiratory Study demonstrated that females who became overweight or obese between ages 6 and 11 years had an increased risk of developing new asthma symptoms and increased bronchial reactivity during the early adolescent period.73, 74\", \"rationale\": \"Epidemiological cohort data linking becoming overweight/obese with increased asthma risk, supporting the increased association of obesity and allergic airway disease.\", \"claim_component\": \"epidemiological data / increased association\"}, {\"quote\": \"The results of this study suggest that pattern of infant weight gain is associated with the risk domain of asthma morbidity for young children at high-risk for chronic asthma.\", \"rationale\": \"Provides evidence that weight/growth (a body-mass-related factor) is associated with asthma outcomes, consistent with an obesity-allergy link.\", \"claim_component\": \"association of obesity and allergy\"}, {\"quote\": \"overweight children were recently shown to have a higher hospital admission rate when presenting to the emergency department when compared with normal weight children with asthma.72\", \"rationale\": \"Epidemiological finding tying overweight status to worse asthma outcomes, supporting an obesity-allergy association.\", \"claim_component\": \"increased association of obesity and allergy\"}, {\"quote\": \"Several mechanisms have been proposed to explain the relationship between obesity and asthma symptoms\", \"rationale\": \"Explicitly acknowledges a recognized relationship between obesity and asthma, aligning with the claimed obesity-allergy association.\", \"claim_component\": \"association of obesity and allergy\"}, {\"quote\": \"Like obesity, the prevalence of asthma has increased over the past several decades.\", \"rationale\": \"Notes the parallel rising prevalence of obesity and asthma, background supporting an increasing epidemiological connection between the two.\", \"claim_component\": \"recent epidemiological data / increased association\"}]}"
+          },
+          "refuter": {
+            "points": [
+              {
+                "quote": "We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.",
+                "objection": "The claim concerns an association between obesity and allergy, but this source studies infant weight-gain pattern and asthma outcomes — asthma is not the same as allergy, and weight-gain pattern is not obesity. The source does not address obesity-allergy epidemiology.",
+                "distortion_type": "mechanism_mismatch",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "with fewer exacerbations occurring amongst those with a decelerated weight gain pattern",
+                "objection": "The source's primary finding is that slower (decelerated) weight gain was protective and accelerated growth associated with more exacerbations; this is an asthma-morbidity relationship, not an obesity–allergy association. If reframed as weight-allergy, the source's atopy data run opposite: the decelerated (leaner) group had the highest atopy.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy",
+                "objection": "For the actual allergy/atopy markers, the SLOWEST weight-gain group showed the HIGHEST atopy — directly opposite to a claim that greater weight/obesity is associated with more allergy.",
+                "distortion_type": "direction_reversal",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion",
+                "objection": "The source reports null findings for major asthma outcomes, undercutting use of it as evidence of an increased weight/allergy association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "Given the small sample size, the findings should be viewed as preliminary",
+                "objection": "The authors explicitly label the results preliminary and underpowered, which cannot support a claim of a robust or 'remarkable' increased association.",
+                "distortion_type": "over_certainty",
+                "routes_to": "grade",
+                "targets_support_point": null
+              },
+              {
+                "quote": "this report cannot be generalized to other populations",
+                "objection": "The cohort is a specific high-risk wheezing population; the authors disclaim generalizability, so it cannot support broad epidemiological claims about obesity and allergy.",
+                "distortion_type": "over_generalization",
+                "routes_to": "rollup_not_grade",
+                "targets_support_point": null
+              }
+            ],
+            "most_severe_distortion": "mechanism_mismatch",
+            "refuter_grade_pressure": "strong",
+            "stance": "The claim concerns an association between obesity and allergy, but this source studies infant weight-gain pattern and asthma outcomes — asthma is not the same as allergy, and weig…",
+            "raw": "{\"points\": [{\"quote\": \"We aimed to determine if infant weight gain pattern is associated with asthma development later in childhood.\", \"objection\": \"The claim concerns an association between obesity and allergy, but this source studies infant weight-gain pattern and asthma outcomes — asthma is not the same as allergy, and weight-gain pattern is not obesity. The source does not address obesity-allergy epidemiology.\", \"distortion_type\": \"mechanism_mismatch\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"with fewer exacerbations occurring amongst those with a decelerated weight gain pattern\", \"objection\": \"The source's primary finding is that slower (decelerated) weight gain was protective and accelerated growth associated with more exacerbations; this is an asthma-morbidity relationship, not an obesity–allergy association. If reframed as weight-allergy, the source's atopy data run opposite: the decelerated (leaner) group had the highest atopy.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy\", \"objection\": \"For the actual allergy/atopy markers, the SLOWEST weight-gain group showed the HIGHEST atopy — directly opposite to a claim that greater weight/obesity is associated with more allergy.\", \"distortion_type\": \"direction_reversal\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"early life weight gain pattern was not associated with daily asthma symptoms or lung function at the study's conclusion\", \"objection\": \"The source reports null findings for major asthma outcomes, undercutting use of it as evidence of an increased weight/allergy association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"Given the small sample size, the findings should be viewed as preliminary\", \"objection\": \"The authors explicitly label the results preliminary and underpowered, which cannot support a claim of a robust or 'remarkable' increased association.\", \"distortion_type\": \"over_certainty\", \"routes_to\": \"grade\", \"targets_support_point\": null}, {\"quote\": \"this report cannot be generalized to other populations\", \"objection\": \"The cohort is a specific high-risk wheezing population; the authors disclaim generalizability, so it cannot support broad epidemiological claims about obesity and allergy.\", \"distortion_type\": \"over_generalization\", \"routes_to\": \"rollup_not_grade\", \"targets_support_point\": null}], \"most_severe_distortion\": \"mechanism_mismatch\", \"refuter_grade_pressure\": \"strong\"}"
+          },
+          "critic": {
+            "grade": "partially-supported",
+            "confidence": 0.6,
+            "reasoning": "The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE is primarily a study of infant weight-gain pattern and later asthma outcomes. Its primary finding is that decelerated (slower) weight gain was PROTECTIVE against asthma exacerbations, while accelerated weight gain was associated with more exacerbations — this direction is consistent with a positive obesity/weight–asthma link. The Discussion explicitly cites obesity-asthma epidemiology: 'the prevalence of asthma is associated with increased body mass index during childhood' and the Tucson study showing overweight/obese females had 'increased risk of developing new asthma symptoms.' These support an increased weight-asthma association. However, the claim is specifically obesity-ALLERGY. On the actual atopy markers, the source found the DECELERATED (leaner) group had the HIGHEST atopy (aeroallergen skin test positivity P=.03, IgE P=.02) — an inverse relationship. So for allergy/atopy per se, the source's own data run opposite. But asthma is closely tied to allergic disease and the Discussion's cited epidemiology backs the general obesity-asthma link. The source is a valid primary study but not centered on obesity-allergy epidemiology; it supports an obesity-asthma association with the leaner-atopy finding running counter for pure allergy markers, and the authors label findings preliminary. Direction of the primary asthma finding supports the claim; the atopy subgroup contradicts. This is on-point but with genuine mixed/partial support and overreach relative to a 'remarkable increased association.'",
+            "decisive_spans": [
+              "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43–51",
+              "with fewer exacerbations occurring amongst those with a decelerated weight gain pattern",
+              "weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy",
+              "Given the small sample size, the findings should be viewed as preliminary"
+            ],
+            "boundary_test_fired": "decomposition",
+            "grade_rationale_last": "Source supports an obesity/weight-asthma link but its actual atopy data show the leaner group had higher allergy, so the obesity-allergy claim is only partly backed.",
+            "raw": "{\"reasoning\": \"The claim asserts an increased epidemiological association between obesity and allergy. The SOURCE is primarily a study of infant weight-gain pattern and later asthma outcomes. Its primary finding is that decelerated (slower) weight gain was PROTECTIVE against asthma exacerbations, while accelerated weight gain was associated with more exacerbations — this direction is consistent with a positive obesity/weight–asthma link. The Discussion explicitly cites obesity-asthma epidemiology: 'the prevalence of asthma is associated with increased body mass index during childhood' and the Tucson study showing overweight/obese females had 'increased risk of developing new asthma symptoms.' These support an increased weight-asthma association. However, the claim is specifically obesity-ALLERGY. On the actual atopy markers, the source found the DECELERATED (leaner) group had the HIGHEST atopy (aeroallergen skin test positivity P=.03, IgE P=.02) — an inverse relationship. So for allergy/atopy per se, the source's own data run opposite. But asthma is closely tied to allergic disease and the Discussion's cited epidemiology backs the general obesity-asthma link. The source is a valid primary study but not centered on obesity-allergy epidemiology; it supports an obesity-asthma association with the leaner-atopy finding running counter for pure allergy markers, and the authors label findings preliminary. Direction of the primary asthma finding supports the claim; the atopy subgroup contradicts. This is on-point but with genuine mixed/partial support and overreach relative to a 'remarkable increased association.'\", \"decisive_spans\": [\"Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood.43\\u201351\", \"with fewer exacerbations occurring amongst those with a decelerated weight gain pattern\", \"weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy\", \"Given the small sample size, the findings should be viewed as preliminary\"], \"boundary_test_fired\": \"decomposition\", \"grade\": \"partially-supported\", \"confidence\": 0.6, \"grade_rationale_last\": \"Source supports an obesity/weight-asthma link but its actual atopy data show the leaner group had higher allergy, so the obesity-allergy claim is only partly backed.\"}"
+          },
+          "critic_grade": "partially-supported",
+          "critic_confidence": 0.6,
+          "agreement": 0.5714,
+          "usage": {
+            "critic_output_tokens": 822,
+            "supporter_output_tokens": null,
+            "refuter_output_tokens": null,
+            "critic_output_cost_usd": 0.06165,
+            "note": "Only the critic's usage.output_tokens was captured; advocate token counts are unknown."
+          }
+        }
+      ],
+      "debate_events": [
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 0,
+            "ts": 1752451203.65,
+            "elapsed_ms": 3650,
+            "role": "supporter",
+            "round": 1,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 1,
+            "ts": 1752451203.65,
+            "elapsed_ms": 6650,
+            "role": "refuter",
+            "round": 1,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 2,
+            "ts": 1752451203.65,
+            "elapsed_ms": 9650,
+            "role": "critic",
+            "round": 1,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 863,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 3,
+            "ts": 1752451212.65,
+            "elapsed_ms": 12650,
+            "round": 1,
+            "supporter_stance": "Directly asserts a positive association between elevated body weight (higher BMI) and asthma, an allergic/atopic condition, supporting the claimed obesity-allergy association.",
+            "refuter_stance": "The claim concerns obesity and allergy. This source studies infant weight gain pattern and asthma exacerbations, not obesity-allergy association. Asthma exacerbations are not equi…",
+            "critic_grade": "partially-supported",
+            "agreement": 0.0
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 4,
+            "ts": 1752451215.65,
+            "elapsed_ms": 15650,
+            "role": "supporter",
+            "round": 2,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 5,
+            "ts": 1752451215.65,
+            "elapsed_ms": 18650,
+            "role": "refuter",
+            "round": 2,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 6,
+            "ts": 1752451215.65,
+            "elapsed_ms": 21650,
+            "role": "critic",
+            "round": 2,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 826,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 7,
+            "ts": 1752451224.65,
+            "elapsed_ms": 24650,
+            "round": 2,
+            "supporter_stance": "Directly supports an association between weight/obesity-related growth and an allergic/atopic respiratory disease (asthma), consistent with the claimed obesity–allergy association.",
+            "refuter_stance": "The claim is about obesity and ALLERGY, but this source studies infant weight gain pattern and asthma outcomes (exacerbations, symptoms, lung function) — not an association betwee…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 0.5
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 8,
+            "ts": 1752451227.65,
+            "elapsed_ms": 27650,
+            "role": "supporter",
+            "round": 3,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 9,
+            "ts": 1752451227.65,
+            "elapsed_ms": 30650,
+            "role": "refuter",
+            "round": 3,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 10,
+            "ts": 1752451227.65,
+            "elapsed_ms": 33650,
+            "role": "critic",
+            "round": 3,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 768,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 11,
+            "ts": 1752451236.65,
+            "elapsed_ms": 36650,
+            "round": 3,
+            "supporter_stance": "Directly asserts an epidemiological association between higher body weight (obesity/BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy…",
+            "refuter_stance": "The SOURCE studies weight gain and asthma, not obesity and allergy. The claim is about the association between obesity and allergy, which is not what this paper measures.",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 0.6667
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 12,
+            "ts": 1752451239.65,
+            "elapsed_ms": 39650,
+            "role": "supporter",
+            "round": 4,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 13,
+            "ts": 1752451239.65,
+            "elapsed_ms": 42650,
+            "role": "refuter",
+            "round": 4,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 14,
+            "ts": 1752451239.65,
+            "elapsed_ms": 45650,
+            "role": "critic",
+            "round": 4,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 805,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 15,
+            "ts": 1752451248.65,
+            "elapsed_ms": 48650,
+            "round": 4,
+            "supporter_stance": "Directly states an epidemiological association between elevated body weight (BMI) and asthma, supporting the claim of an increased association between obesity and allergy/asthma.",
+            "refuter_stance": "The claim concerns an association between obesity and allergy, but this SOURCE studies infant weight gain patterns and asthma outcomes, not obesity per se and not allergy. Asthma …",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 0.75
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 16,
+            "ts": 1752451251.65,
+            "elapsed_ms": 51650,
+            "role": "supporter",
+            "round": 5,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 17,
+            "ts": 1752451251.65,
+            "elapsed_ms": 54650,
+            "role": "refuter",
+            "round": 5,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 18,
+            "ts": 1752451251.65,
+            "elapsed_ms": 57650,
+            "role": "critic",
+            "round": 5,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 818,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 19,
+            "ts": 1752451260.65,
+            "elapsed_ms": 60650,
+            "round": 5,
+            "supporter_stance": "Directly asserts an association between increased body weight (obesity/BMI) and asthma, an allergic/atopic respiratory condition, supporting the claim of increased association bet…",
+            "refuter_stance": "The source studies infant weight gain patterns and asthma outcomes, not obesity and allergy per se. The claim concerns an 'association of obesity and allergy,' which is a differen…",
+            "critic_grade": "supported-with-overreach",
+            "agreement": 0.8
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 20,
+            "ts": 1752451263.65,
+            "elapsed_ms": 63650,
+            "role": "supporter",
+            "round": 6,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 21,
+            "ts": 1752451263.65,
+            "elapsed_ms": 66650,
+            "role": "refuter",
+            "round": 6,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 22,
+            "ts": 1752451263.65,
+            "elapsed_ms": 69650,
+            "role": "critic",
+            "round": 6,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 896,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 23,
+            "ts": 1752451272.65,
+            "elapsed_ms": 72650,
+            "round": 6,
+            "supporter_stance": "Directly asserts a positive epidemiological association between increased body weight (obesity/BMI) and asthma (an allergic/atopic respiratory disease), supporting the claim of an…",
+            "refuter_stance": "The claim concerns 'obesity and allergy,' but this source studies infant weight gain pattern and asthma outcomes — asthma is a respiratory disease, not synonymous with allergy, an…",
+            "critic_grade": "partially-supported",
+            "agreement": 0.6667
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 24,
+            "ts": 1752451275.65,
+            "elapsed_ms": 75650,
+            "role": "supporter",
+            "round": 7,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 25,
+            "ts": 1752451275.65,
+            "elapsed_ms": 78650,
+            "role": "refuter",
+            "round": 7,
+            "phase": "end",
+            "usage": null
+          }
+        },
+        {
+          "event": "model_call",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 26,
+            "ts": 1752451275.65,
+            "elapsed_ms": 81650,
+            "role": "critic",
+            "round": 7,
+            "phase": "end",
+            "usage": {
+              "input": 300,
+              "output": 822,
+              "cache_read": 6000,
+              "cache_write": 0
+            }
+          }
+        },
+        {
+          "event": "debate_round",
+          "data": {
+            "run_id": "replay_Ce11",
+            "seq": 27,
+            "ts": 1752451284.65,
+            "elapsed_ms": 84650,
+            "round": 7,
+            "supporter_stance": "Directly asserts an association between increased body weight (BMI) and asthma, an allergic/atopic respiratory disease, supporting the claimed obesity-allergy association.",
+            "refuter_stance": "The claim concerns an association between obesity and allergy, but this source studies infant weight-gain pattern and asthma outcomes — asthma is not the same as allergy, and weig…",
+            "critic_grade": "partially-supported",
+            "agreement": 0.5714
+          }
+        }
+      ],
+      "replay": {
+        "outcome": "GRADED",
+        "verdict": "supported-with-overreach",
+        "a_exact": 0.5714,
+        "a_adj": 1.0,
+        "n_valid": 7,
+        "ordinal_distribution": {
+          "supported-with-overreach": 4,
+          "partially-supported": 3
+        },
+        "tier": "low",
+        "code": "current HEAD aggregation (_aggregate_rounds + _decide_outcome)",
+        "note": "Reproducible: replay these committed per-round critic grades through the current citeval aggregation to get exactly this outcome. This is what W1-CORE-TESTS asserts."
+      },
+      "frozen_prediction": {
+        "status": "ABSTAINED",
+        "grade": "NOT_ENOUGH_INFO",
+        "confidence": 0.1429,
+        "ref_grade": "supported-with-overreach",
+        "code_version": "f99d21f+dirty",
+        "elapsed_s": 227.5,
+        "note": "PRE-REGRADE SNAPSHOT: the frozen cal30 prediction abstained under code f99d21f; replaying these SAME rounds through the CURRENT aggregation grades supported-with-overreach at a_exact=0.57 (adjacent-only split). See `replay` for the reproducible, current-code outcome."
+      }
+    }
+  }
+}
