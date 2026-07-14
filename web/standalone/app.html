@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>citeval — standalone verdict console</title>
+<!--
+  citeval standalone fallback (W2-FE-SHOWCASE)
+  ============================================
+  A SINGLE self-contained HTML file: no build step, no bundler, no backend, no API key, zero
+  external assets (system fonts, inline SVG, inline CSS/JS). It renders a real worked verdict for
+  each of the four proof cases from data committed inline below — the guaranteed demo path if the
+  live web UI, the network, or NCBI/Anthropic is unavailable mid-judging.
+
+  It will OPTIONALLY hit the same GET /api/showcase the SPA uses (button below): on success it
+  re-renders from live data; on failure it stays on the embedded fixtures and says so. Double-click
+  it (file://) and it works offline immediately.
+
+  Colours mirror web/src/design/tokens.ts (which in turn mirror src/citeval/reporting.py), so a
+  badge here reads identically to the same badge in the app and in the exported report_html.
+
+  COPY DISCIPLINE (reviews/improvements/07_uiux.md §Principle 3 / PP-05): the graded reference is an
+  INDEPENDENT AI reviewer (Claude Science), human spot-check pending — never "human ground truth".
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f7f8fa; --surface: #ffffff; --surface2: #f6f8fa; --border: #e5e7eb;
+    --text: #1a1a1a; --muted: #5b6270; --brand: #4f46e5; --brand-contrast: #ffffff;
+
+    --prov-meta-bg: #e6f4ea; --prov-meta-fg: #137333;
+    --prov-text-bg: #e8f0fe; --prov-text-fg: #1967d2;
+    --prov-model-bg: #fef7e0; --prov-model-fg: #99590b;
+    --prov-stub-bg: #f1f3f4; --prov-stub-fg: #5f6368;
+    --prov-composite-bg: #f3e8fd; --prov-composite-fg: #7b2fbe;
+
+    --grade0-bg: #dcfce7; --grade0-fg: #15803d;
+    --grade1-bg: #ecfccb; --grade1-fg: #4d7c0f;
+    --grade2-bg: #fef9c3; --grade2-fg: #a16207;
+    --grade3-bg: #ffedd5; --grade3-fg: #c2410c;
+    --grade4-bg: #fee2e2; --grade4-fg: #991b1b;
+    --grade5-bg: #fecaca; --grade5-fg: #7f1d1d;
+
+    --nei-bg: #f1f5f9; --nei-fg: #475569; --nei-border: #cbd5e1;
+    --nonsub-bg: #f8fafc; --nonsub-fg: #64748b; --nonsub-border: #e2e8f0;
+
+    --gate-fired-bg: #fee2e2; --gate-fired-fg: #991b1b; --gate-fired-border: #fca5a5;
+    --gate-clear-bg: #e6f4ea; --gate-clear-fg: #137333; --gate-clear-border: #a7e3bf;
+
+    --conf-high-bg: #e6f4ea; --conf-high-fg: #137333;
+    --conf-medium-bg: #fef7e0; --conf-medium-fg: #99590b;
+    --conf-low-bg: #ffedd5; --conf-low-fg: #c2410c;
+    --conf-abstain-bg: #f1f5f9; --conf-abstain-fg: #475569;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --surface: #1b1e24; --surface2: #22262e; --border: #2a2f37;
+      --text: #e6e6e6; --muted: #a1a7b0; --brand: #818cf8; --brand-contrast: #0b0d12;
+
+      --prov-meta-bg: #0f2a1b; --prov-meta-fg: #6ee7a3;
+      --prov-text-bg: #16233d; --prov-text-fg: #a8c7fa;
+      --prov-model-bg: #33280a; --prov-model-fg: #f5d67e;
+      --prov-stub-bg: #26292e; --prov-stub-fg: #b3b8bf;
+      --prov-composite-bg: #2a1b3d; --prov-composite-fg: #d6b3f5;
+
+      --grade0-bg: #0f2a1a; --grade0-fg: #4ade80;
+      --grade1-bg: #1c2708; --grade1-fg: #a3e635;
+      --grade2-bg: #2a2408; --grade2-fg: #facc15;
+      --grade3-bg: #2c1a0a; --grade3-fg: #fb923c;
+      --grade4-bg: #2e1414; --grade4-fg: #f87171;
+      --grade5-bg: #3f1212; --grade5-fg: #fca5a5;
+
+      --nei-bg: #1e293b; --nei-fg: #cbd5e1; --nei-border: #475569;
+      --nonsub-bg: #18202c; --nonsub-fg: #94a3b8; --nonsub-border: #334155;
+
+      --gate-fired-bg: #2e1414; --gate-fired-fg: #fca5a5; --gate-fired-border: #7f1d1d;
+      --gate-clear-bg: #0f2a1b; --gate-clear-fg: #6ee7a3; --gate-clear-border: #1e5c39;
+
+      --conf-high-bg: #0f2a1b; --conf-high-fg: #6ee7a3;
+      --conf-medium-bg: #33280a; --conf-medium-fg: #f5d67e;
+      --conf-low-bg: #2c1a0a; --conf-low-fg: #fb923c;
+      --conf-abstain-bg: #1e293b; --conf-abstain-fg: #cbd5e1;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5; -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  a { color: var(--brand); }
+  :where(a, button, [tabindex]):focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+
+  header.top { border-bottom: 1px solid var(--border); background: var(--surface); }
+  .brandmark {
+    display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: .5rem;
+    background: var(--brand); color: var(--brand-contrast); font-weight: 900; font-size: 1.1rem;
+  }
+  h1 { font-size: 1.35rem; font-weight: 900; letter-spacing: -.01em; margin: 0; }
+  h2 { font-size: 1.05rem; font-weight: 800; margin: 0 0 .5rem; }
+  .sub { color: var(--muted); font-size: .85rem; margin: .25rem 0 0; }
+  .eyebrow { font-size: .68rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: .625rem; padding: 1rem 1.15rem; }
+  section { margin-top: 1.5rem; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: .3rem; border-radius: 9999px;
+    padding: .1rem .5rem; font-size: .74rem; font-weight: 700; line-height: 1.3;
+    border: 1px solid transparent; white-space: nowrap;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: .35rem; border-radius: .5rem;
+    padding: .2rem .55rem; font-size: .78rem; font-weight: 600;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+  }
+  .prov-meta { background: var(--prov-meta-bg); color: var(--prov-meta-fg); }
+  .prov-text { background: var(--prov-text-bg); color: var(--prov-text-fg); }
+  .prov-model { background: var(--prov-model-bg); color: var(--prov-model-fg); }
+  .prov-stub { background: var(--prov-stub-bg); color: var(--prov-stub-fg); }
+  .prov-composite { background: var(--prov-composite-bg); color: var(--prov-composite-fg); }
+
+  /* case tabs */
+  .tabs { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+  .tab {
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    border-radius: .5rem; padding: .4rem .7rem; font-size: .82rem; font-weight: 700; cursor: pointer;
+  }
+  .tab[aria-pressed="true"] { color: var(--brand-contrast); background: var(--brand); border-color: var(--brand); }
+  .tab:hover:not([aria-pressed="true"]) { color: var(--text); }
+
+  .btn {
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    border-radius: .5rem; padding: .4rem .7rem; font-size: .82rem; font-weight: 700; cursor: pointer;
+  }
+  .status { font-size: .78rem; color: var(--muted); }
+
+  .gate {
+    display: flex; align-items: center; gap: .6rem; border-radius: .5rem; padding: .7rem .9rem;
+    border: 1px solid; font-weight: 700;
+  }
+  .gate.fired { background: var(--gate-fired-bg); color: var(--gate-fired-fg); border-color: var(--gate-fired-border); }
+  .gate.clear { background: var(--gate-clear-bg); color: var(--gate-clear-fg); border-color: var(--gate-clear-border); }
+
+  blockquote {
+    margin: .4rem 0; padding: .5rem .8rem; border-left: 3px solid var(--border);
+    background: var(--surface2); color: var(--text); border-radius: 0 .35rem .35rem 0; font-size: .9rem;
+  }
+  .gloss { color: var(--muted); font-size: .82rem; margin: .3rem 0 0; }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: .5rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+  th, td { text-align: left; padding: .5rem .65rem; vertical-align: top; border-bottom: 1px solid var(--border); }
+  thead th { background: var(--surface2); font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  /* graded ramp */
+  .ramp { display: flex; gap: 2px; margin-top: .4rem; }
+  .ramp .stop { flex: 1; height: 1.5rem; position: relative; opacity: .5; }
+  .ramp .stop.active { opacity: 1; box-shadow: inset 0 0 0 2px var(--text); }
+  .ramp .stop .idx {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: .7rem; font-weight: 800; color: var(--text);
+  }
+  .ramp.offscale { opacity: .4; }
+  .ramp-ends { display: flex; justify-content: space-between; margin-top: .35rem; font-size: .7rem; color: var(--muted); }
+
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; font-size: .88rem; margin: 0; }
+  .kv dt { font-weight: 700; color: var(--muted); }
+  .kv dd { margin: 0; }
+
+  .grid2 { display: grid; gap: 1rem; }
+  @media (min-width: 820px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+  .callout {
+    background: var(--conf-medium-bg); border: 1px solid var(--conf-medium-fg);
+    border-radius: .625rem; padding: 1rem 1.15rem; color: var(--conf-medium-fg);
+  }
+  .callout h2 { color: var(--conf-medium-fg); }
+  footer { margin-top: 2rem; border-top: 1px solid var(--border); padding-top: 1rem; color: var(--muted); font-size: .82rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap" style="padding-bottom:1rem;">
+    <div style="display:flex; align-items:center; gap:.6rem;">
+      <span class="brandmark" aria-hidden="true">✓</span>
+      <div>
+        <h1>citeval — standalone verdict console</h1>
+        <p class="sub">Does the cited paper actually support the claim? · <strong>No build · no backend · no key.</strong></p>
+      </div>
+      <span id="source-badge" class="badge prov-stub" style="margin-left:auto; border-style:dashed;" title="Rendered from committed fixtures embedded in this file.">embedded fixtures</span>
+    </div>
+
+    <div class="tabs" role="group" aria-label="Choose a proof case" id="tabs"></div>
+
+    <div style="display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-top:.6rem;">
+      <button class="btn" id="live-btn" type="button">Try live /api/showcase</button>
+      <span class="status" id="live-status" role="status" aria-live="polite">Offline-safe: showing committed fixtures. The live button hits the same API the app uses, and falls back here if it can’t.</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap" id="app">
+  <section class="card" aria-labelledby="claim-h">
+    <div class="eyebrow">The question</div>
+    <h2 id="claim-h" style="margin-top:.2rem;">Claim ⟶ cited paper</h2>
+    <p class="gloss" style="margin-top:0;">Claim (verbatim from the citing paper):</p>
+    <blockquote id="claim" class="mono"></blockquote>
+    <dl class="kv" style="margin-top:.6rem;">
+      <dt>Cited paper</dt><dd id="cited-title"></dd>
+      <dt>Identifier</dt><dd><span class="mono" id="cited-pmid"></span></dd>
+    </dl>
+  </section>
+
+  <section aria-labelledby="gate-h">
+    <div class="eyebrow">The verdict</div>
+    <h2 id="gate-h">Objective gate</h2>
+    <div id="gate" class="gate"></div>
+    <p class="gloss" id="gate-note"></p>
+  </section>
+
+  <section aria-labelledby="axes-h">
+    <h2 id="axes-h">Per-axis findings</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th scope="col">Axis</th><th scope="col">Verdict</th><th scope="col">Tier</th><th scope="col">Provenance</th><th scope="col">Basis</th></tr></thead>
+        <tbody id="axes-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="grid2" style="margin-top:1.5rem;">
+    <section class="card" aria-labelledby="graded-h">
+      <div class="eyebrow">Substantive support (graded)</div>
+      <h2 id="graded-h" style="margin-top:.2rem;">Where it lands on the scale</h2>
+      <div id="ramp-wrap"></div>
+      <div style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.7rem;" id="graded-badges"></div>
+      <p class="gloss" id="calibration-note"></p>
+    </section>
+
+    <section class="card" aria-labelledby="span-h">
+      <div class="eyebrow">The adversarial trace</div>
+      <h2 id="span-h" style="margin-top:.2rem;">Decisive verbatim spans
+        <span class="badge prov-meta" title="Every stored quote is a verbatim substring of the source text (invariant #5).">verbatim-guard ✓</span>
+      </h2>
+      <p class="gloss" style="margin-top:.2rem;">Supporter — best supporting span:</p>
+      <blockquote id="supporter-span"></blockquote>
+      <p class="gloss" id="supporter-point"></p>
+      <p class="gloss">Refuter — strongest objection:</p>
+      <blockquote id="refuter-span"></blockquote>
+      <p class="gloss" id="refuter-objection"></p>
+    </section>
+  </div>
+
+  <section class="callout" aria-labelledby="honest-h" style="margin-top:1.5rem;">
+    <h2 id="honest-h">Honest by construction</h2>
+    <p style="margin:.3rem 0 0;">
+      The graded axis is measured against an <strong>independent AI reviewer (Claude Science)</strong> —
+      independent of the grader, with a <strong>human spot-check still pending</strong>; not a human
+      gold standard, and we don’t claim one. Confidence is Platt-recalibrated (raw ECE 0.32 →
+      leave-one-out 0.08) without touching discrimination (AUROC 0.64 unchanged). Population-scope
+      recall is genuinely weak (0.40 held-out) and reported, not hidden.
+    </p>
+  </section>
+
+  <footer>
+    <p>
+      This file is the offline fallback for the full citeval web app. Objective facts (retraction
+      status, organism class, publication types) reflect the real structured record; the cited-paper
+      prose is a condensed illustrative stand-in for offline rendering. Reproduce the in-domain
+      headline numbers with <span class="mono">make eval</span>.
+    </p>
+  </footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var RB1_GRADES = [
+    "fully-supported", "supported-with-overreach", "partially-supported",
+    "technically-true-but-misleading", "unsupported-for-the-claim", "contradicted"
+  ];
+
+  // ---- embedded fixtures: condensed, faithful to web/src/lib/fixtures.ts --------------------
+  var CASES = [
+    {
+      key: "retraction",
+      tab: "Retraction",
+      claim: "Exogenous c-kit+ cells are currently being used to treat post-MI heart failure patients, and early results have shown small, albeit significant functional improvements in the heart 24.",
+      citedTitle: "Cardiac stem cells in patients with ischaemic cardiomyopathy (SCIPIO): initial results of a randomised phase 1 trial",
+      pmid: "22088800",
+      overall: "NOT SUPPORTED AS STATED (CITATION RELIES ON A RETRACTED PAPER) — substantive grade: supported-with-overreach (held separately)",
+      gateNote: "Retraction is metadata-grounded: Retraction Watch record 20119 (2019-03-14) AND the NCBI 'Retracted Publication' flag agree. The citation relies on the retracted finding, so overall gates regardless of the substantive grade.",
+      findings: [
+        { axis: "retraction", verdict: "RELIES_ON_RETRACTED", tier: "high", provenance: "metadata-grounded", detail: "Cited paper is retracted per structured records; a claim resting on it inherits the retraction." },
+        { axis: "species_scope", verdict: "SCOPE_CONSISTENT", tier: "medium", provenance: "metadata-grounded (cited) + text-grounded (claim)", detail: "Claim asserts human scope; cited paper MeSH organism scope includes Humans." },
+        { axis: "population_scope", verdict: "NOT_ASSESSED", tier: "low", provenance: "model-inferred", detail: "No explicit or implicit population scope in the claim; population axis not assessed." },
+        { axis: "substantive_support", verdict: "supported-with-overreach", tier: "medium", provenance: "model-inferred", detail: "Holding retraction aside, the paper does report a small significant LVEF improvement — but the claim generalises a phase-1 result to 'currently being used to treat patients'." }
+      ],
+      grade: "supported-with-overreach", confTier: "medium", agreement: 0.71, nSamples: 7, abstained: false,
+      calibration: "",
+      supporterSpan: "intracoronary infusion of autologous c-kit+ cardiac stem cells produced a small but significant improvement in left ventricular ejection fraction in patients with post-infarction heart failure",
+      supporterPoint: "Directly matches the claim's 'small, albeit significant functional improvement'.",
+      refuterSpan: "We report the initial results of a phase 1 randomised trial",
+      refuterObjection: "A phase-1 initial result does not support 'currently being used to treat patients' — the claim over-states clinical adoption."
+    },
+    {
+      key: "scope_mismatch",
+      tab: "Species scope",
+      claim: "Resveratrol has shown promising clinical benefits as anti-aging [60], anti-inflammatory [61], anti-diabetic [62], anti-viral [63], anti-neoplastic [64], and anti-CVD agents [65].",
+      citedTitle: "Resveratrol improves health and survival of mice on a high-calorie diet.",
+      pmid: "17086191",
+      overall: "NOT SUPPORTED AS STATED (SPECIES SCOPE MISMATCH) — substantive grade: fully-supported (held separately)",
+      gateNote: "Species scope is metadata-grounded: cited MeSH organism tags are Animals / Mice / Mice, Inbred C57BL with NO Humans tag, while the claim asserts human 'clinical benefits'. The substance is fully supported IN MICE — scope over-reach is held on its own axis.",
+      findings: [
+        { axis: "retraction", verdict: "NOT_RETRACTED", tier: "high", provenance: "metadata-grounded", detail: "No retraction found in Retraction Watch or NCBI records." },
+        { axis: "species_scope", verdict: "SCOPE_MISMATCH", tier: "medium", provenance: "metadata-grounded (cited) + model-inferred (claim)", detail: "Cited paper is mouse-only (MeSH: Animals, Mice) with Humans ABSENT — the human claim is not supported by this animal study. Metadata authoritative." },
+        { axis: "population_scope", verdict: "NOT_ASSESSED", tier: "low", provenance: "model-inferred", detail: "No explicit or implicit population scope in the claim; population axis not assessed." },
+        { axis: "substantive_support", verdict: "fully-supported", tier: "high", provenance: "model-inferred", detail: "Holding scope constant, the paper's own (murine) results fully support the listed benefits; the species over-generalisation is carried by the scope axis, not this grade." }
+      ],
+      grade: "fully-supported", confTier: "high", agreement: 0.86, nSamples: 7, abstained: false,
+      calibration: "",
+      supporterSpan: "resveratrol improves the health and survival of mice on a high-calorie diet",
+      supporterPoint: "The paper substantiates the claimed benefits within its (murine) scope.",
+      refuterSpan: "at doses achievable in humans",
+      refuterObjection: "The paper only speculates that doses are humans-achievable; it presents NO human clinical data, so 'clinical benefits' over-generalises."
+    },
+    {
+      key: "graded_overreach",
+      tab: "Graded over-reach",
+      claim: "Remarkably, recent epidemiological data exhibit an increased association of obesity and allergy [200,201,202,203].",
+      citedTitle: "Relationship between infant weight gain and later asthma.",
+      pmid: "19725894",
+      overall: "SUBSTANTIVE SUPPORT: supported-with-overreach",
+      gateNote: "No objective gate: the cited paper is not retracted and the human scope matches, so overall tracks the substantive grade.",
+      findings: [
+        { axis: "retraction", verdict: "NOT_RETRACTED", tier: "high", provenance: "metadata-grounded", detail: "No retraction found in Retraction Watch or NCBI records." },
+        { axis: "species_scope", verdict: "SCOPE_CONSISTENT", tier: "medium", provenance: "metadata-grounded (cited) + model-inferred (claim)", detail: "Claim asserts human scope; cited paper MeSH organism scope includes Humans." },
+        { axis: "population_scope", verdict: "NOT_ASSESSED", tier: "low", provenance: "model-inferred", detail: "No explicit or implicit population scope in the claim; population axis not assessed." },
+        { axis: "substantive_support", verdict: "supported-with-overreach", tier: "low", provenance: "model-inferred", detail: "The discussion affirms a positive obesity/BMI–asthma link in the claimed direction, but the direct atopy markers run the OTHER way and the paper is hedged/preliminary — so a firm 'increased association of obesity and allergy' over-reaches." }
+      ],
+      grade: "supported-with-overreach", confTier: "low", agreement: 0.57, nSamples: 7, abstained: false,
+      calibration: "Adjacent-only split (a_adj=1.00): the vote oscillated between two neighbouring grades (over-reach ×4, partially-supported ×3), so the grade is placed with honest LOW confidence.",
+      supporterSpan: "Outside of infancy, the prevalence of asthma is associated with increased body mass index during childhood",
+      supporterPoint: "The discussion affirms a positive obesity/BMI–asthma link in the claimed direction.",
+      refuterSpan: "Weight gain pattern was significantly associated with aeroallergen skin test positivity (P=.03) and IgE level (P=.02), with the decelerated group demonstrating the highest degree of atopy",
+      refuterObjection: "On the direct atopy markers the LEANER group had the HIGHEST atopy — an inverse obesity–allergy link — so the claim over-generalises 'asthma' to 'allergy'."
+    },
+    {
+      key: "abstention",
+      tab: "Abstention",
+      claim: "VZV reactivation is more common in highly immunosuppressed children who are receiving therapy for cancer or rheumatological diseases 202.",
+      citedTitle: "Varicella-zoster virus infection and immunization in the healthy and the immunocompromised host.",
+      pmid: "2832088",
+      overall: "INSUFFICIENT EVIDENCE TO GRADE SUBSTANTIVE SUPPORT (abstained)",
+      gateNote: "No objective gate: not retracted, and the human scope matches. The panel abstained on the graded axis rather than guess.",
+      findings: [
+        { axis: "retraction", verdict: "NOT_RETRACTED", tier: "high", provenance: "metadata-grounded", detail: "No retraction found in Retraction Watch or NCBI records." },
+        { axis: "species_scope", verdict: "SCOPE_CONSISTENT", tier: "medium", provenance: "metadata-grounded (cited) + model-inferred (claim)", detail: "Claim asserts human scope; cited paper MeSH organism scope includes Humans (the stray 'Animals' tag is false-positive bait)." },
+        { axis: "population_scope", verdict: "NOT_ASSESSED", tier: "low", provenance: "model-inferred", detail: "No explicit or implicit population scope in the claim; population axis not assessed." },
+        { axis: "substantive_support", verdict: "NOT_ENOUGH_INFO", tier: "low", provenance: "model-inferred", detail: "The cited review establishes elevated VZV risk in the immunocompromised host generally, but does NOT verbatim-ground the SPECIFIC pediatric-cancer/rheumatology subgroup the claim asserts. The vote was non-adjacent multimodal, so the panel ABSTAINS." }
+      ],
+      grade: "NOT_ENOUGH_INFO", confTier: "low", agreement: 0.33, nSamples: 3, abstained: true,
+      calibration: "Non-adjacent multimodal split (a_adj=0.67 < 0.70) with only 3 of 7 rounds placing a parseable grade — below the trust floor, so the panel abstains. Recorded as an abstention, NEVER scored as wrong.",
+      supporterSpan: "The immunocompromised host is at increased risk of severe and disseminated VZV disease",
+      supporterPoint: "Supports elevated risk in the immunocompromised host in general.",
+      refuterSpan: "The relative contributions of specific immunosuppressive regimens, underlying disease, and age to reactivation risk remain incompletely defined",
+      refuterObjection: "The review explicitly says the subgroup-specific contributions are incompletely defined — it does not substantiate the claim's specific pediatric comparison."
+    }
+  ];
+
+  // ---- helpers ------------------------------------------------------------------------------
+  function el(id) { return document.getElementById(id); }
+  function txt(node, s) { node.textContent = s; }
+
+  function provClass(provenance) {
+    var atom = String(provenance || "").trim().split(/\s+/)[0];
+    switch (atom) {
+      case "metadata-grounded": return "prov-meta";
+      case "text-grounded": return "prov-text";
+      case "model-inferred": return "prov-model";
+      case "stub-not-adjudicated": return "prov-stub";
+      default: return "prov-composite";
+    }
+  }
+  function provBadge(provenance) {
+    var span = document.createElement("span");
+    span.className = "badge " + provClass(provenance);
+    span.textContent = provenance;
+    return span;
+  }
+  function gradeIndex(v) { return RB1_GRADES.indexOf(v); }
+  function isGraded(v) { return gradeIndex(v) >= 0; }
+
+  function gateFiredOf(overall) { return /NOT SUPPORTED AS STATED/i.test(overall || ""); }
+
+  function padlockSvg(closed) {
+    var d = closed
+      ? 'M8 10.5V7a4 4 0 0 1 8 0v3.5'
+      : 'M8 10.5V7a4 4 0 0 1 7.5-1.9';
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<rect x="4" y="10.5" width="16" height="10" rx="2" fill="currentColor"></rect>' +
+      '<path d="' + d + '" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>';
+  }
+
+  function renderRamp(grade) {
+    var wrap = el("ramp-wrap");
+    wrap.innerHTML = "";
+    var graded = isGraded(grade);
+    var activeIdx = graded ? gradeIndex(grade) : -1;
+    var offscale = !graded;
+
+    var ramp = document.createElement("div");
+    ramp.className = "ramp" + (offscale ? " offscale" : "");
+    ramp.setAttribute("role", "img");
+    ramp.setAttribute("aria-label", offscale
+      ? "Substantive support: " + grade + " — off the six-level ordinal scale."
+      : "Substantive support: " + grade + " — grade " + activeIdx + " of 5 on the scale, best (0) to worst (5).");
+    for (var i = 0; i < 6; i++) {
+      var stop = document.createElement("div");
+      stop.className = "stop" + (i === activeIdx ? " active" : "");
+      stop.style.background = "var(--grade" + i + "-bg)";
+      if (i === 0) { stop.style.borderTopLeftRadius = "6px"; stop.style.borderBottomLeftRadius = "6px"; }
+      if (i === 5) { stop.style.borderTopRightRadius = "6px"; stop.style.borderBottomRightRadius = "6px"; }
+      if (offscale) stop.style.opacity = "1";
+      if (i === activeIdx) {
+        var idx = document.createElement("span");
+        idx.className = "idx"; idx.textContent = String(i);
+        stop.appendChild(idx);
+      }
+      ramp.appendChild(stop);
+    }
+    wrap.appendChild(ramp);
+
+    var ends = document.createElement("div");
+    ends.className = "ramp-ends";
+    ends.innerHTML = "<span>supported (0)</span><strong style='color:var(--text)'>" +
+      (offscale ? escapeHtml(grade) + " · off scale" : escapeHtml(grade)) +
+      "</strong><span>contradicted (5)</span>";
+    wrap.appendChild(ends);
+  }
+
+  function gradeBadge(grade) {
+    var span = document.createElement("span");
+    span.className = "badge";
+    if (isGraded(grade)) {
+      var i = gradeIndex(grade);
+      span.style.background = "var(--grade" + i + "-bg)";
+      span.style.color = "var(--grade" + i + "-fg)";
+      span.textContent = i + "· " + grade;
+    } else {
+      var nei = grade === "NOT_ENOUGH_INFO";
+      span.style.background = nei ? "var(--nei-bg)" : "var(--nonsub-bg)";
+      span.style.color = nei ? "var(--nei-fg)" : "var(--nonsub-fg)";
+      span.style.borderColor = nei ? "var(--nei-border)" : "var(--nonsub-border)";
+      span.style.borderStyle = "dashed";
+      span.textContent = grade;
+    }
+    return span;
+  }
+
+  function confBadge(tier, agreement, nSamples, abstained) {
+    var key = abstained ? "abstain" : tier;
+    var span = document.createElement("span");
+    span.className = "badge";
+    span.style.background = "var(--conf-" + key + "-bg)";
+    span.style.color = "var(--conf-" + key + "-fg)";
+    var label = abstained ? "abstained" : tier;
+    var detail = (agreement != null)
+      ? "agreement " + agreement.toFixed(2) + (nSamples != null ? " · " + nSamples + " samples" : "")
+      : "";
+    span.innerHTML = "<strong style='text-transform:uppercase;letter-spacing:.03em'>" + label + "</strong>" +
+      (detail ? " <span style='font-weight:400;opacity:.9'>" + detail + "</span>" : "");
+    return span;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // ---- render one case ----------------------------------------------------------------------
+  function render(c) {
+    txt(el("claim"), "“" + c.claim + "”");
+    txt(el("cited-title"), c.citedTitle);
+    txt(el("cited-pmid"), "PMID " + c.pmid);
+
+    var fired = gateFiredOf(c.overall);
+    var gate = el("gate");
+    gate.className = "gate " + (fired ? "fired" : "clear");
+    gate.innerHTML = padlockSvg(fired) + "<span>" + escapeHtml(c.overall) + "</span>";
+    txt(el("gate-note"), c.gateNote);
+
+    var body = el("axes-body");
+    body.innerHTML = "";
+    c.findings.forEach(function (f) {
+      var tr = document.createElement("tr");
+      var tdAxis = document.createElement("td"); tdAxis.textContent = f.axis; tr.appendChild(tdAxis);
+      var tdV = document.createElement("td");
+      var strong = document.createElement("strong"); strong.textContent = f.verdict; tdV.appendChild(strong); tr.appendChild(tdV);
+      var tdTier = document.createElement("td"); tdTier.textContent = f.tier; tr.appendChild(tdTier);
+      var tdProv = document.createElement("td"); tdProv.appendChild(provBadge(f.provenance)); tr.appendChild(tdProv);
+      var tdBasis = document.createElement("td"); tdBasis.textContent = f.detail; tr.appendChild(tdBasis);
+      body.appendChild(tr);
+    });
+
+    renderRamp(c.grade);
+    var badges = el("graded-badges");
+    badges.innerHTML = "";
+    badges.appendChild(gradeBadge(c.grade));
+    badges.appendChild(confBadge(c.confTier, c.agreement, c.nSamples, c.abstained));
+    var note = el("calibration-note");
+    if (c.calibration) { txt(note, c.calibration); note.style.display = ""; }
+    else { note.style.display = "none"; }
+
+    txt(el("supporter-span"), c.supporterSpan);
+    txt(el("supporter-point"), c.supporterPoint);
+    txt(el("refuter-span"), c.refuterSpan);
+    txt(el("refuter-objection"), c.refuterObjection);
+  }
+
+  // ---- tabs ---------------------------------------------------------------------------------
+  var active = 0;
+  var dataset = CASES;
+  var tabButtons = [];
+  // Toggle without rebuilding the DOM: flip aria-pressed on the EXISTING buttons so the activated
+  // button (and the keyboard user's focus on it) is never detached. A full buildTabs() rebuild is
+  // reserved for when the dataset itself changes (the live-fetch path).
+  function selectTab(i) {
+    active = i;
+    tabButtons.forEach(function (b, j) { b.setAttribute("aria-pressed", String(j === active)); });
+    render(dataset[active]);
+  }
+  function buildTabs() {
+    var tabs = el("tabs");
+    tabs.innerHTML = "";
+    tabButtons = [];
+    dataset.forEach(function (c, i) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "tab"; b.textContent = c.tab;
+      b.setAttribute("aria-pressed", String(i === active));
+      b.addEventListener("click", function () { selectTab(i); });
+      tabs.appendChild(b);
+      tabButtons.push(b);
+    });
+  }
+
+  // ---- optional live fetch ------------------------------------------------------------------
+  function normalize(rr) {
+    try {
+      var v = rr.verdict, core = v.verdict, g = v.grounded;
+      var sub = (core.axis_findings || []).filter(function (a) { return a.axis === "substantive_support"; })[0] || {};
+      var ev = sub.evidence || {};
+      var conf = ev.confidence || {};
+      return {
+        tab: g.title.slice(0, 18) + "…",
+        claim: v.claim_unit.atomic_claim,
+        citedTitle: g.title,
+        pmid: v.claim_unit.cited_identifier.value,
+        overall: core.overall,
+        gateNote: (core.notes && core.notes[2]) || "",
+        findings: (core.axis_findings || []).map(function (a) {
+          return { axis: a.axis, verdict: a.verdict, tier: a.tier, provenance: a.provenance, detail: a.detail };
+        }),
+        grade: sub.verdict, confTier: conf.verbalized || "low",
+        agreement: conf.agreement, nSamples: conf.n_samples, abstained: !!ev.abstained,
+        calibration: (ev.calibration && ev.calibration.note) || "",
+        supporterSpan: (ev.supporter && ev.supporter.span) || "",
+        supporterPoint: (ev.supporter && ev.supporter.point) || "",
+        refuterSpan: (ev.refuter && ev.refuter.span) || "",
+        refuterObjection: (ev.refuter && ev.refuter.objection) || ""
+      };
+    } catch (e) { return null; }
+  }
+
+  el("live-btn").addEventListener("click", function () {
+    var status = el("live-status");
+    txt(status, "Contacting /api/showcase…");
+    fetch("/api/showcase", { headers: { accept: "application/json" } })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (rows) {
+        var mapped = (rows || []).map(normalize).filter(Boolean);
+        if (!mapped.length) throw new Error("no renderable rows");
+        dataset = mapped; active = 0; buildTabs(); render(dataset[0]);
+        var badge = el("source-badge");
+        badge.className = "badge prov-meta"; badge.style.borderStyle = "solid";
+        badge.textContent = "live /api"; badge.title = "Rendered from the live GET /api/showcase response.";
+        txt(status, "Live: rendering " + mapped.length + " case(s) from /api/showcase.");
+      })
+      .catch(function (err) {
+        txt(status, "Live API unavailable (" + err.message + ") — staying on committed fixtures. This is the fallback working as designed.");
+      });
+  });
+
+  // ---- boot ---------------------------------------------------------------------------------
+  buildTabs();
+  render(dataset[active]);
+})();
+</script>
+</body>
+</html>
