@@ -70,6 +70,33 @@ make test        # full unit-test suite
 Running the live pipeline on a new claim + paper needs `ANTHROPIC_API_KEY` (and, for higher NCBI limits,
 `NCBI_EMAIL` / `NCBI_API_KEY`).
 
+## Run the live UI
+
+A read-only web surface over the pipeline — a live five-stage stepper, the adversarial-debate replay,
+and running cost/ETA — that **demos with no API key** (the web app is mock-backed by default). From the
+repo root, in two terminals:
+
+```bash
+# terminal 1 — API on 127.0.0.1:8000
+cd server && pip install -r requirements.txt && python main.py
+
+# terminal 2 — UI on http://localhost:5173 (mock-backed, no key needed)
+cd web && npm install && npm run dev
+```
+
+- **No build?** Open [`web/standalone/app.html`](web/standalone/app.html) straight in a browser — a
+  zero-dependency fallback of the same UI.
+- **No key?** The server's `GET /api/showcase` route is keyless — it returns four cached,
+  fully-populated verdicts (retraction catch, species-scope mismatch, graded over-reach, honest
+  abstention), so a judge renders real output with nothing to configure. An `ANTHROPIC_API_KEY` is
+  needed only to start a *new* live run.
+- **Prefer to read?** The same cases are baked into offline, no-key proof pages — the
+  [worked-example showcase](docs/showcase.html) and the
+  [innovation artifacts](docs/artifacts/index.html) — and a 2–3 minute judge walkthrough is in
+  [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
+
+More detail: [`server/README.md`](server/README.md) · [`web/README.md`](web/README.md).
+
 ## What it caught
 
 - **It overruled its own answer key.** Building the objective corpus, the dual-source retraction check

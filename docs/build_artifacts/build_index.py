@@ -80,6 +80,17 @@ def build() -> str:
              'straight from the file that backs the claim, so nothing here is a slide, it’s the '
              'evidence.</p></div>')
 
+    b.append('<div class="card"><h2>Part of the citeval submission</h2>'
+             '<p class="sec-note">These four pages are the innovation artifacts. Follow the rest of '
+             'the trail: '
+             '<a href="../showcase.html">worked-example showcase</a> (the four real cases these '
+             'pages dissect, rendered offline) &middot; '
+             '<a href="../SUBMISSION.md">submission writeup</a> &middot; '
+             '<a href="../../README.md">project README</a> &middot; '
+             '<a href="../LANDSCAPE.md">landscape analysis</a> &middot; and the live web UI '
+             '(<code>server/</code> + <code>web/</code>, or the zero-build '
+             '<a href="../../web/standalone/app.html">app.html</a>).</p></div>')
+
     extra_css = """
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
 @media (max-width:720px){.cards{grid-template-columns:1fr}}

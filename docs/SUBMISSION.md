@@ -12,6 +12,12 @@ corpus, and stress-tested on a held-out set it was never tuned on.*
 > (population scope — recall **0.71** held-out) we measure it and say so. Reproduce the in-domain
 > headlines offline in seconds: `make eval`.
 
+**Navigate this submission.** Start at the [project README](../README.md) · run the **live web UI**
+([`server/`](../server/README.md) + [`web/`](../web/README.md) — mock-backed, so it demos with no
+API key) · or open the offline, no-key proof pages: the [worked-example showcase](showcase.html) and
+the [innovation artifacts](artifacts/index.html). A 2–3 minute guided walkthrough is in
+[`DEMO_SCRIPT.md`](DEMO_SCRIPT.md).
+
 ---
 
 ## Hook

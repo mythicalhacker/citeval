@@ -32,6 +32,24 @@ from citeval import reporting  # noqa: E402
 _CAL = _ROOT / "corpus" / "calibration"
 _OUT = _ROOT / "docs" / "showcase.html"
 
+# A small navigation footer so a judge can follow one trail from these worked examples to the rest
+# of the submission. Injected here (not in the frozen `reporting.render_showcase_page`), and kept to
+# RELATIVE links only — the offline showcase test forbids any http(s):// URL, `src=`, or <script>.
+_FOOTER = (
+    '\n<footer style="margin-top:2.75rem;padding-top:1.1rem;border-top:1px solid #e5e5e5;'
+    'font-size:.9rem;color:#57606a;line-height:1.7">'
+    '<strong style="color:#1a1a1a">Follow the trail &rarr;</strong> '
+    'these four cases are the worked examples behind the writeup. Explore: '
+    '<a href="SUBMISSION.md" style="color:#137333;font-weight:600">Submission writeup</a> &middot; '
+    '<a href="artifacts/index.html" style="color:#137333;font-weight:600">Innovation artifacts</a> &middot; '
+    '<a href="LANDSCAPE.md" style="color:#137333;font-weight:600">Landscape</a> &middot; '
+    '<a href="../README.md" style="color:#137333;font-weight:600">Project README</a> &middot; '
+    '<a href="../web/standalone/app.html" style="color:#137333;font-weight:600">Live UI (zero-build fallback)</a>'
+    '<div style="margin-top:.6rem;color:#8a8a8a">Built offline from committed calibration data &mdash; '
+    'no API key, no network. Regenerate with <code>python docs/build_showcase.py</code>.</div>'
+    '</footer>\n'
+)
+
 # The four cases + their narrative. Order tells the story: over-reach → retraction → scope → clean.
 # `axis_focus` is the axis each card is the hero of; the card still shows all four axes.
 _CASES = [
@@ -177,7 +195,10 @@ def build_cards() -> list[dict]:
 
 
 def build_showcase_html() -> str:
-    return reporting.render_showcase_page(build_cards())
+    html = reporting.render_showcase_page(build_cards())
+    if "</body>" in html:
+        return html.replace("</body>", _FOOTER + "</body>", 1)
+    return html + _FOOTER
 
 
 def main() -> int:

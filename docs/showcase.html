@@ -108,7 +108,7 @@ blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb
 <tbody>
 <tr><td>retraction</td><td><strong>RELIES_ON_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>Cited paper is retracted per structured records; a claim resting on it inherits the retraction.</td></tr>
 <tr><td>species_scope</td><td><strong>SCOPE_MISMATCH</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human/clinical relevance, but cited paper MeSH organism scope is [&#x27;Animals&#x27;, &#x27;Rats&#x27;, &#x27;Rats, Sprague-Dawley&#x27;] with &#x27;Humans&#x27; ABSENT — the human claim is not supported by this animal study. Metadata authoritative.</td></tr>
-<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit or implicit population scope in the claim; population axis not assessed.</td></tr>
 <tr><td>substantive_support</td><td><strong>unsupported-for-the-claim</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “unsupported-for-the-claim” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: abstract.</td></tr>
 </tbody></table></div>
 </div>
@@ -138,13 +138,13 @@ blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb
 <tbody>
 <tr><td>retraction</td><td><strong>RELIES_ON_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>Cited paper is retracted per structured records; a claim resting on it inherits the retraction.</td></tr>
 <tr><td>species_scope</td><td><strong>CLAIM_SCOPE_UNSTATED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>Claim does not explicitly assert an organism scope; not flaggable without the deeper (Opus) scope parse.</td></tr>
-<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
-<tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 0.57 across the sampled rounds; evidence depth: abstract.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit or implicit population scope in the claim; population axis not assessed.</td></tr>
+<tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>medium</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 0.71 over 7 sampled rounds; evidence depth: abstract.</td></tr>
 </tbody></table></div>
 </div>
 </div>
 <div class="graded-mini">
-<p><strong>Substantive support:</strong> fully-supported &nbsp;·&nbsp; <strong>Confidence:</strong> low — self-consistency agreement 0.57; verbalized low &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
+<p><strong>Substantive support:</strong> fully-supported &nbsp;·&nbsp; <strong>Confidence:</strong> medium — self-consistency agreement 0.71 across 7 samples; verbalized medium &nbsp;·&nbsp; <span class="badge prov-model">model-inferred</span></p>
 <p class="lbl">Key evidence span — quoted by the independent reference grading (Claude Science), from the abstract</p>
 <blockquote>GAS5 overexpression conferred sorafenib sensitive to nonresponsive RCC cells, whereas knockdown of GAS5 promoted responsive RCC cells resistant to sorafenib treatment in vitro and in vivo. Mechanistically, GAS5 functioned as competing endogenous RNA to repress miR-21, which controlled its down-stream target SOX5.</blockquote>
 <p class="refnote">Cross-check: the system&#x27;s grade agrees with the independent reference grading (Claude Science) from the abstract.</p>
@@ -168,7 +168,7 @@ blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb
 <tbody>
 <tr><td>retraction</td><td><strong>NOT_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>No retraction found in Retraction Watch or NCBI records.</td></tr>
 <tr><td>species_scope</td><td><strong>SCOPE_MISMATCH</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human/clinical relevance, but cited paper MeSH organism scope is [&#x27;Animals&#x27;, &#x27;Bacteriophages&#x27;, &#x27;Mice&#x27;] with &#x27;Humans&#x27; ABSENT — the human claim is not supported by this animal study. Metadata authoritative.</td></tr>
-<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit or implicit population scope in the claim; population axis not assessed.</td></tr>
 <tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: fulltext.</td></tr>
 </tbody></table></div>
 </div>
@@ -198,7 +198,7 @@ blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb
 <tbody>
 <tr><td>retraction</td><td><strong>NOT_RETRACTED</strong></td><td>high</td><td><span class="badge prov-meta">metadata-grounded</span></td><td>No retraction found in Retraction Watch or NCBI records.</td></tr>
 <tr><td>species_scope</td><td><strong>SCOPE_CONSISTENT</strong></td><td>medium</td><td><span class="badge prov-meta">metadata-grounded (cited) + text-grounded (claim)</span></td><td>Claim asserts human scope; cited paper MeSH organism scope includes Humans ([&#x27;Animals&#x27;, &#x27;Humans&#x27;, &#x27;Mice&#x27;, &#x27;Mice, Knockout&#x27;]).</td></tr>
-<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit population marker in the claim, or no population MeSH on the cited paper; population axis not assessed at slice depth.</td></tr>
+<tr><td>population_scope</td><td><strong>NOT_ASSESSED</strong></td><td>low</td><td><span class="badge prov-model">model-inferred</span></td><td>No explicit or implicit population scope in the claim; population axis not assessed.</td></tr>
 <tr><td>substantive_support</td><td><strong>fully-supported</strong></td><td>high</td><td><span class="badge prov-model">model-inferred</span></td><td>Adversarial supporter/refuter/critic panel graded “fully-supported” with exact self-consistency agreement 1.00 over 4 sampled rounds; evidence depth: fulltext.</td></tr>
 </tbody></table></div>
 </div>
@@ -211,4 +211,6 @@ blockquote { margin: .35rem 0; padding: .4rem .8rem; border-left: 3px solid #bbb
 </div>
 </article>
 </main>
+
+<footer style="margin-top:2.75rem;padding-top:1.1rem;border-top:1px solid #e5e5e5;font-size:.9rem;color:#57606a;line-height:1.7"><strong style="color:#1a1a1a">Follow the trail &rarr;</strong> these four cases are the worked examples behind the writeup. Explore: <a href="SUBMISSION.md" style="color:#137333;font-weight:600">Submission writeup</a> &middot; <a href="artifacts/index.html" style="color:#137333;font-weight:600">Innovation artifacts</a> &middot; <a href="LANDSCAPE.md" style="color:#137333;font-weight:600">Landscape</a> &middot; <a href="../README.md" style="color:#137333;font-weight:600">Project README</a> &middot; <a href="../web/standalone/app.html" style="color:#137333;font-weight:600">Live UI (zero-build fallback)</a><div style="margin-top:.6rem;color:#8a8a8a">Built offline from committed calibration data &mdash; no API key, no network. Regenerate with <code>python docs/build_showcase.py</code>.</div></footer>
 </body></html>
