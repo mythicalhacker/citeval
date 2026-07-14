@@ -49,13 +49,32 @@ They also run under pytest if you install it (`pip install -r server/requirement
 pytest server/tests
 ```
 
-## Run the live server (Wave 2+, needs the full deps + an Anthropic key)
+## Run the live server (W2-SERVER — `app.py` + `main.py`)
 
 ```bash
 pip install -r server/requirements.txt
-uvicorn citeval_api.app:app --reload      # once W2-SERVER lands server/citeval_api/app.py
-# or:  python server/main.py
+python server/main.py                     # 127.0.0.1:8000 (HOST/PORT/RELOAD via env)
+# or, from inside server/:  uvicorn citeval_api.app:app --reload
 ```
 
-The web app is **mock-backed by default** (`VITE_USE_MOCK=true`), so the UI runs with no server
-and no key; flip to `false` to hit this API. See `web/` and `docs/api_contract.md` §Showcase.
+An **Anthropic key is needed only to start a new run** (`POST /api/runs`, live path). The key-free
+routes work immediately: `GET /api/health`, `GET /api/pricing`, and **`GET /api/showcase`** — which
+serves the four cached, fully-populated `RunResult`s (retraction catch, species-scope mismatch,
+graded over-reach, abstention) so a judge renders real verdicts with **no key**. Those are loaded
+from `citeval_api/data/showcase_runs.json`, generated from the FE `SHOWCASE_RUNS` fixtures by:
+
+```bash
+python server/tools/gen_showcase.py        # regenerate after web/src/lib/fixtures.ts changes
+```
+
+If a built SPA exists at `web/dist`, it is served at `/` (with an index fallback for client-side
+routes); `/api` always takes precedence. In dev the web app is **mock-backed by default**
+(`VITE_USE_MOCK=true`) and runs with no server and no key; flip to `false` (CORS is pre-configured
+for the Vite dev origin) to hit this API. Batch routes are guarded: if `citeval_api.batch`
+(W2-BATCH) has not merged, `POST /api/batch` returns `503` and every run route still works.
+
+Run the app's own end-to-end tests (offline; skips cleanly if FastAPI is not installed):
+
+```bash
+python -m unittest discover -s server/tests -t server -v   # includes test_app.py
+```
