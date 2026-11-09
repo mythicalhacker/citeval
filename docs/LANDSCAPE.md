@@ -1,5 +1,9 @@
 # Landscape — scientific citation-verification & claim-checking tools
 
+> **July 2026 archive.** This landscape comparison uses the terminology of the original event. Model reads
+> supplied the substantive reference grades, and the 45-case extension informed the scope repair.
+> See the [current results](../README.md#results) and [reference provenance](../corpus/calibration/README.md).
+
 *Positioning pass, 2026-07-12. Scope: tools and research that touch "does the cited paper support*
 *this claim," not general literature search, writing, or reference-management assistants.*
 

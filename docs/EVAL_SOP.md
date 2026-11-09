@@ -15,10 +15,14 @@
 > is the separate, slow, keyed ladder in **§2**. §1 below is the same replay path as `make eval`, at
 > finer grain.
 >
-> Verified healthy baseline (= `make eval`): retraction & scope precision 1.00, **scope recall 0.909**
-> (in-domain, un-propped), coverage **0.96**, **QWK 0.90**, within-one-level **1.00**, raw ECE **0.32**
-> → recalibrated LOO-**ECE 0.08**, AUROC 0.64, **zero confident-but-wrong**; held-out (ext-45):
-> retraction 1.00, scope recall 0.71.
+> On the original 30 cases, the offline gate gives retraction and scope precision 1.00, scope recall
+> 0.909 and graded coverage 0.96. Compared with the model-generated reference, the 27 substantive
+> grades give QWK 0.90, within-one-level agreement 1.00, raw ECE 0.32, recalibrated leave-one-out
+> ECE 0.08 and AUROC 0.64. No high-confidence grade differed by two or more levels.
+>
+> The separate [45-case results](../corpus/calibration/results_ext_objective.jsonl) record all
+> 12 retractions flagged with zero false positives. Scope recall after repair was 12/17 (0.71).
+> The extension supplied examples for the repair and was reused to score it.
 >
 > **⚠️ The detailed sections below are a pre-regrade snapshot.** They predate the gate landing and the
 > committed C4 re-grade, and quote the *earlier* figures — coverage 1.00, QWK **0.70**, raw ECE
@@ -63,16 +67,12 @@ verified against the current `argparse` definitions and, where noted, against a 
   - `corpus/calibration/corpus_cal15.jsonl` — 15 cases. Exists but is **not** part of the ladder
     in §2 below; an optional extra rung if you want a midpoint between cal9 and cal30.
   - `corpus/calibration/corpus_cal30.jsonl` — the full 30-case calibration slice.
-  - `corpus/calibration/graded_reference_v2.jsonl` — the designated-truth `substantive_grade` per
-    case_id (30 rows). Per CLAUDE.md's anti-circularity rule this must never be model-generated;
-    in practice today it is an LLM full-text read (Claude Science) with a blind decider-adjudicated
-    correction pass on ambiguous cases (`grade_provenance` field), **pending the human spot-check**
-    noted as outstanding in `design/STATUS.md` item 5. Treat today's accuracy numbers as the best
-    available estimate, not yet human-certified.
-  - `corpus/calibration/graded_predictions_cal30.jsonl` — cached C4 (Opus 4.8) output from the last
-    full cal30 run: 30 rows = 27 `GRADED` + 1 `ABSTAINED` (Ch05, title/MeSH-only) + 1
-    `NON_SUBSTANTIATING` (Ch15, background citation) + 1 `ERROR` (Bs09, a transient upstream 529
-    "Overloaded" — infra, not a verdict, always excluded from every metric and retried on next run).
+  - `corpus/calibration/graded_reference_v2.jsonl` contains 30 model-generated reference records.
+    The `grade_provenance` field records 27 Claude Science readings and three blind re-reads.
+    See the [reference documentation](../corpus/calibration/README.md).
+  - `corpus/calibration/graded_predictions_cal30.jsonl` contains 27 `GRADED` predictions,
+    two `ABSTAINED` (Ch05 and Ce11) and one `NON_SUBSTANTIATING` (Ch15). Bs09 received a grade
+    in this saved version.
   - `corpus/calibration/calibration_map.json` — last fitted Platt map (post-regrade: `A=3.0248,
     B=-2.3786, n_fit=27`, dated 2026-07-13).
   - `corpus/calibration/gate_thresholds.json` — the committed, versioned gate thresholds

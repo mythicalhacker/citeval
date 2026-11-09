@@ -1,5 +1,12 @@
 # citeval — Built with Claude: Life Sciences
 
+> **Correction to the July 2026 submission.** The text below preserves the original hackathon
+> writeup. Its substantive-support references were model-generated, including an Opus 4.8 grader.
+> The grading prompt was repaired using cases from the original set. The 45-case extension informed
+> a later scope repair and was reused to evaluate it. On that set, 0.71 is combined scope recall
+> (12 of 17). Population recall alone was 0.40 (2 of 5). See the [current results](../README.md#results)
+> and [reference provenance](../corpus/calibration/README.md) for the corrected interpretation.
+
 *A citation referee that grades whether a cited paper actually supports the claim citing it —
 grounded in external records, adversarially adjudicated on Claude Opus 4.8, proven with a scored eval
 corpus, and stress-tested on a held-out set it was never tuned on.*

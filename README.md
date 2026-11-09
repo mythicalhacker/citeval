@@ -1,18 +1,15 @@
 # citeval
 
-**A citation referee for scientific claims.** Give citeval one claim and the paper cited to support it,
-and it decides whether the paper *actually* supports the claim — grounded in external structured
-records, adversarially adjudicated on **Claude Opus 4.8**, and proven on a scored eval corpus plus a
-held-out set it was never tuned on.
+**A citation referee for scientific claims.** Give citeval a claim and the paper cited to support it.
+It checks retraction records, compares the claim's scope with the paper's metadata, and uses Claude
+Opus 4.8 to assess whether the text supports the claim.
 
 Built for **Built with Claude: Life Sciences** (Development Track).
 
-> **TL;DR** — Three axes (retraction · species/population scope · a six-level *substantive-support*
-> grade), every verdict carrying a confidence **tier** and a **provenance** label. Retraction detection
-> is perfect in-domain *and* on a held-out set (P/R **1.00**); the graded axis reaches **0.90**
-> quadratic-weighted kappa, is **within one level on every case**, carries **zero confident-but-wrong**
-> grades, and recalibrates to an honest **0.08** ECE. Where it's weak (population scope), we measure it
-> and say so. Reproduce the headline numbers offline in seconds with `make eval`.
+On a 45-case development set, citeval flagged all 12 retraction cases and none of the other 33.
+On the same set, the scope checker caught 10 of 12 species mismatches and 2 of 5 population
+mismatches, with one false positive. We used these cases to diagnose and repair the scope checker.
+The separate substantive-support evaluation uses model-generated reference grades.
 
 ## The problem
 
@@ -23,14 +20,12 @@ result quietly generalized to humans, a number attributed that the paper never r
 retracted papers keep being cited as if live. citeval answers the narrow, checkable question — *does THIS
 paper support THIS claim?* — and refuses to answer it with a number it can't defend.
 
-## Thesis: grounded-and-measured, not model-checks-model
+## Where the evidence comes from
 
-One principle shapes every decision: **if a choice trades provable grounding for impressive-looking model
-output, it is the wrong choice.** Objective facts (retraction, scope) are decided by external structured
-records, not by asking a model to grade a model — a structured record always overrides the model. The
-subjective axis is decided by an adversarial process and then *measured* against a reference that is
-independent of the grader, reporting not just whether the labels are right but whether the confidence is
-honest, and whether any of it survives on data we never tuned on.
+Retraction status comes from publication records. MeSH descriptors identify the species and
+populations a paper covers. A model judges whether the citing claim extends beyond that scope.
+For substantive support, we compare the adjudicator's grades with separate model-generated readings
+of the paper. The [calibration reference](corpus/calibration/README.md) records how those labels were produced.
 
 ## What it does — three axes, every verdict tiered + provenance-stamped
 
@@ -49,18 +44,25 @@ honest, and whether any of it survives on data we never tuned on.
    identity-blinded transcripts — the exact non-binary "spin" that flat SUPPORT / REFUTE / NOT-ENOUGH-INFO
    labels can't express.
 
-## Results (verified offline via `make eval`)
+## Results
 
-| Axis | Result |
+| Evaluation | Recorded outcome |
 |---|---|
-| Retraction — in-domain **and** held-out | precision / recall **1.00** |
-| Graded substantive (N=27) | QWK **0.90** · within-one-level **1.00** · recalibrated LOO-ECE **0.08** · **zero** confident-but-wrong · coverage 0.96 |
-| Scope — in-domain | precision **1.00** / recall **0.909** |
-| Scope — held-out (45 fresh cases, never tuned on) | precision **0.92** / recall **0.71** (species 0.83, population 0.40) |
+| Retractions, original 30 cases | Flagged 10 of 10 retraction cases and none of the other 20. |
+| Retractions, 45-case extension | Flagged 12 of 12 retraction cases and none of the other 33. |
+| Substantive support, original set | On 27 graded cases, 16 exact matches and all 27 within one level of the model reference. Quadratic-weighted kappa was 0.90. Raw expected calibration error was 0.32 and the leave-one-out estimate after recalibration was 0.08. |
+| Scope, original set | Detected 10 of 11 mismatches with no false positives. |
+| Scope, 45-case extension | Detected 12 of 17 mismatches with one false positive after the scope repair. |
+
+The [original results](corpus/calibration/results_cal30.jsonl) include revised grades from a prompt
+repair prompted by errors on the original set. The [extension results](corpus/calibration/results_ext_objective.jsonl)
+record retraction and scope decisions. A [before-and-after report](outputs/wo_c3_scope_report.md)
+documents how the scope logic changed after inspecting failures on the extension. The repaired
+system still needs evaluation on fresh cases.
 
 ## Reproduce it
 
-Offline, deterministic, no API key, under two seconds (the retraction index ships pre-built):
+The offline gate scores the original 30 saved results and requires no API key:
 
 ```bash
 make eval        # fast offline gate: scores the committed corpus, runs the versioned gate, prints PASS/FAIL + numbers
@@ -95,6 +97,9 @@ cd web && npm install && npm run dev
   [innovation artifacts](docs/artifacts/index.html) — and a 2–3 minute judge walkthrough is in
   [`docs/DEMO_SCRIPT.md`](docs/DEMO_SCRIPT.md).
 
+The static demo pages and scorecard text retain the terminology used at the July 2026 event.
+For the source of the reference grades and the reuse of the 45 cases, see the [current results](#results).
+
 More detail: [`server/README.md`](server/README.md) · [`web/README.md`](web/README.md).
 
 ## What it caught
@@ -103,23 +108,19 @@ More detail: [`server/README.md`](server/README.md) · [`web/README.md`](web/REA
   flagged papers as retracted that the corpus's own labels had marked clean. Retraction Watch and NCBI
   agreed; the labels were wrong — the metadata-overrides-model rule firing against its own makers.
 - **It caught a fabricated attribution** — a claim crediting a named researcher with a finding from a
-  paper that was actually about something else; all three independent graders returned
+  paper that was actually about something else; three model grades returned
   *unsupported-for-the-claim* at full confidence.
 - **It abstained rather than bluff** on cases that genuinely couldn't be graded, instead of inventing a
   grade.
-- **A held-out test proved it generalizes — and exposed its own propped metric.** A scope number we had
-  reported as a perfect 1.00 did not generalize (~0.29 out-of-sample); we fixed the underlying logic
-  honestly (recall to **0.71**, precision *rising*), removed the prop, and let the in-domain number stand
-  on its own at **0.909**.
+- **The extension exposed missed scope mismatches.** The first version found 5 of 17 on the
+  extension. After changes to the scope logic it found 12 of 17 on those same cases.
 
-## Honest limitations
+## Limitations
 
-Population-scope recall is genuinely weak (0.40 held-out) — a general claim citing a pediatric-only paper
-is often unresolvable from the claim text alone. N is small. The calibration reference is an *independent
-AI reviewer* — independent of the grader (the anti-circularity property that matters), but not yet
-human-certified. An adversarial triad on Opus per verdict is deliberately slow and costly: this is a deep
-checker for the one citation that matters, not a bulk bibliography screener. Full detail in
-[`docs/SUBMISSION.md`](docs/SUBMISSION.md).
+The repaired scope checker missed three of five population mismatches on the extension. The original
+set supplied examples for a grading prompt repair, and substantive-support agreement measures
+agreement with model labels. Human review and a new evaluation set would test whether these results
+carry over. See the [original hackathon writeup with a later correction](docs/SUBMISSION.md).
 
 ## Repo map
 
@@ -128,6 +129,6 @@ checker for the one citation that matters, not a bulk bibliography screener. Ful
   `reporting.py` (verdicts).
 - **`docs/`** — [`SUBMISSION.md`](docs/SUBMISSION.md) (full writeup), [`LANDSCAPE.md`](docs/LANDSCAPE.md)
   (competitive analysis), `showcase.html` (offline visual case walkthrough), `EVAL_SOP.md`.
-- **`corpus/calibration/`** — the corpus, predictions, the independent reference, the 45-case held-out
-  set, and the fitted calibration map.
+- **`corpus/calibration/`** — the corpus, saved predictions, model-generated reference grades, the
+  45-case extension, and the fitted calibration map.
 - **`data/retraction_watch/`** — the ~29k-record retraction index.

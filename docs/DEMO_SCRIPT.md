@@ -1,5 +1,9 @@
 # citeval — a 2–3 minute demo walkthrough
 
+> **July 2026 archive.** This demo script uses the terminology of the original event. Model reads
+> supplied the substantive reference grades, and the 45-case extension informed the scope repair.
+> See the [current results](../README.md#results) and [reference provenance](../corpus/calibration/README.md).
+
 *For a judge or reviewer. The whole path runs **with no API key** — the web app is mock-backed by
 default and the offline proof pages need nothing at all. A key is required only to grade a brand-new
 claim live.* Full writeup: [`SUBMISSION.md`](SUBMISSION.md) · headline numbers reproduce offline with

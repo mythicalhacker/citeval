@@ -3,12 +3,15 @@
 **Deliverables:** `corpus_cal_ext.jsonl` (45 cases) + `graded_reference_ext.jsonl` (45 grades)
 Schemas are byte-identical in key set and order to the seed `corpus_cal30.jsonl` / `graded_reference_v2.jsonl`.
 
+The 45 cases were first used to evaluate the original scope checker. After its misses informed a
+repair, the same cases were used to score the revised checker. See the [repair report](../../outputs/wo_c3_scope_report.md).
+
 ## What each case is
 A **claim** (a verbatim sentence from a real open-access citing paper) paired with the **cited paper**,
 plus an externally-grounded `ground_truth_label`, and — in the grades file — a **blind substantive grade**
 of how well the cited paper's *finding* supports the claim.
 
-## How ground truth was established (metadata-grounded, not model judgment)
+## Metadata and model judgments behind the labels
 - **RETRACTED (12 cases):** confirmed on **Retraction Watch** (RW record ID + reason + date) **AND**
   cross-checked against **NCBI PubMed** ('Retracted Publication' article type) **AND** OpenAlex `is_retracted`.
   Every A-case is triple-confirmed; RW record IDs and retraction dates are in `justifying_metadata`/`retraction_*`.
